@@ -6,9 +6,10 @@ import Bautagebuch from './projekt/Bautagebuch'
 import Maengel from './projekt/Maengel'
 import Aufgaben from './projekt/Aufgaben'
 import Angebote from './projekt/Angebote'
+import Rechnungen from './projekt/Rechnungen'
 
 type Projekt = ProjektDetails & { breitengrad: number | null; laengengrad: number | null }
-type Tab = 'uebersicht' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben'
+type Tab = 'uebersicht' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'rechnungen'
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'uebersicht', label: 'Übersicht' },
@@ -16,6 +17,7 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'bautagebuch', label: 'Bautagebuch' },
   { key: 'maengel', label: 'Mängel' },
   { key: 'aufgaben', label: 'Aufgaben' },
+  { key: 'rechnungen', label: 'Rechnungen' },
 ]
 
 const PROJEKT_SPALTEN =
@@ -104,6 +106,7 @@ export default function ProjektDetail() {
       {aktivTab === 'angebote' && <Angebote projektId={id} />}
       {aktivTab === 'maengel' && <Maengel projektId={id} />}
       {aktivTab === 'aufgaben' && <Aufgaben projektId={id} />}
+      {aktivTab === 'rechnungen' && <Rechnungen projektId={id} />}
     </div>
   )
 }
