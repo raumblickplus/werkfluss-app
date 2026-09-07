@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import Logo from '../components/Logo'
@@ -118,15 +119,17 @@ export default function Projekte() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {projekte.map((p) => (
-          <div key={p.id} style={{ ...karteStil, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px' }}>
-            <div>
-              <div style={{ fontWeight: 700 }}>{p.name}</div>
-              {p.adresse && <div style={{ fontSize: 13, color: 'var(--ink-dim)' }}>{p.adresse}</div>}
+          <Link key={p.id} to={`/projekte/${p.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div style={{ ...karteStil, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', cursor: 'pointer' }}>
+              <div>
+                <div style={{ fontWeight: 700 }}>{p.name}</div>
+                {p.adresse && <div style={{ fontSize: 13, color: 'var(--ink-dim)' }}>{p.adresse}</div>}
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'oklch(93% 0.01 70)', color: 'var(--ink-dim)' }}>
+                {statusLabel[p.status] ?? p.status}
+              </span>
             </div>
-            <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'oklch(93% 0.01 70)', color: 'var(--ink-dim)' }}>
-              {statusLabel[p.status] ?? p.status}
-            </span>
-          </div>
+          </Link>
         ))}
       </div>
     </div>
