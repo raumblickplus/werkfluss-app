@@ -5,7 +5,7 @@ import Bautagebuch from './projekt/Bautagebuch'
 import Maengel from './projekt/Maengel'
 import Aufgaben from './projekt/Aufgaben'
 
-type Projekt = { id: string; name: string; adresse: string | null; status: string }
+type Projekt = { id: string; name: string; adresse: string | null; status: string; breitengrad: number | null; laengengrad: number | null }
 type Tab = 'bautagebuch' | 'maengel' | 'aufgaben'
 
 const tabs: { key: Tab; label: string }[] = [
@@ -25,7 +25,7 @@ export default function ProjektDetail() {
     setLadeStatus('laedt')
     supabase
       .from('projekte')
-      .select('id, name, adresse, status')
+      .select('id, name, adresse, status, breitengrad, laengengrad')
       .eq('id', id)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -75,7 +75,17 @@ export default function ProjektDetail() {
         ))}
       </div>
 
-      {aktivTab === 'bautagebuch' && <Bautagebuch projektId={id} />}
+      {aktivTab === 'bautagebuch' && (
+        <Bautagebuch
+          projektId={id}
+          adresse={projekt.adresse}
+          koordinaten={
+            projekt.breitengrad != null && projekt.laengengrad != null
+              ? { breitengrad: projekt.breitengrad, laengengrad: projekt.laengengrad }
+              : null
+          }
+        />
+      )}
       {aktivTab === 'maengel' && <Maengel projektId={id} />}
       {aktivTab === 'aufgaben' && <Aufgaben projektId={id} />}
     </div>

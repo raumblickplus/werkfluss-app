@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
+import { adresseZuKoordinaten } from '../lib/wetter'
 import { useAuth } from '../lib/AuthContext'
 import Logo from '../components/Logo'
 import { eingabeStil, knopfStil, karteStil, knopfSekundaerStil } from './stil'
@@ -54,10 +55,15 @@ export default function Projekte() {
   async function projektAnlegen(e: FormEvent) {
     e.preventDefault()
     if (!aktivFirma) return
+
+    const koordinaten = neueAdresse ? await adresseZuKoordinaten(neueAdresse) : null
+
     const { error } = await supabase.from('projekte').insert({
       firma_id: aktivFirma.id,
       name: neuerName,
       adresse: neueAdresse || null,
+      breitengrad: koordinaten?.breitengrad ?? null,
+      laengengrad: koordinaten?.laengengrad ?? null,
     })
     if (!error) {
       setNeuerName('')
