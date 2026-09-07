@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient'
 import { adresseZuKoordinaten } from '../lib/wetter'
 import { useAuth } from '../lib/AuthContext'
 import Logo from '../components/Logo'
+import AdresseSuche, { googleAdresssucheVerfuegbar } from '../components/AdresseSuche'
 import { eingabeStil, knopfStil, karteStil, knopfSekundaerStil, projektStatusLabel } from './stil'
 
 type Projekt = {
@@ -11,7 +12,6 @@ type Projekt = {
   name: string
   status: string
   adresse: string | null
-  start_datum: string | null
 }
 
 export default function Projekte() {
@@ -21,13 +21,15 @@ export default function Projekte() {
   const [zeigeFormular, setZeigeFormular] = useState(false)
   const [neuerName, setNeuerName] = useState('')
   const [neueAdresse, setNeueAdresse] = useState('')
+  const [neueKoordinaten, setNeueKoordinaten] = useState<{ breitengrad: number; laengengrad: number } | null>(null)
+  const googleAktiv = googleAdresssucheVerfuegbar()
 
   async function ladeProjekte() {
     if (!aktivFirma) return
     setLadeStatus('laedt')
     const { data, error } = await supabase
       .from('projekte')
-      .select('id, name, status, adresse, start_datum')
+      .select('id, name, status, adresse')
       .eq('firma_id', aktivFirma.id)
       .order('erstellt_am', { ascending: false })
 
@@ -48,7 +50,10 @@ export default function Projekte() {
     e.preventDefault()
     if (!aktivFirma) return
 
-    const koordinaten = neueAdresse ? await adresseZuKoordinaten(neueAdresse) : null
+    // Wenn die Google-Adresssuche eine Adresse ausgewählt hat, nutzen wir deren
+    // Koordinaten direkt. Sonst (freies Textfeld) versuchen wir es über die
+    // kostenlose Geocoding-Schätzung.
+    const koordinaten = neueKoordinaten ?? (neueAdresse ? await adresseZuKoordinaten(neueAdresse) : null)
 
     const { error } = await supabase.from('projekte').insert({
       firma_id: aktivFirma.id,
@@ -60,6 +65,7 @@ export default function Projekte() {
     if (!error) {
       setNeuerName('')
       setNeueAdresse('')
+      setNeueKoordinaten(null)
       setZeigeFormular(false)
       ladeProjekte()
     }
@@ -103,7 +109,24 @@ export default function Projekte() {
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
             Adresse (optional)
-            <input style={eingabeStil} value={neueAdresse} onChange={(e) => setNeueAdresse(e.target.value)} />
+            {neueAdresse && (
+              <div style={{ fontSize: 13, color: 'var(--ink)', padding: '8px 0' }}>{neueAdresse}</div>
+            )}
+            {googleAktiv ? (
+              <AdresseSuche
+                platzhalter="Adresse eingeben und Vorschlag auswählen …"
+                onAuswahl={(a) => {
+                  setNeueAdresse(a.adresse)
+                  setNeueKoordinaten({ breitengrad: a.breitengrad, laengengrad: a.laengengrad })
+                }}
+              />
+            ) : (
+              <input
+                style={eingabeStil}
+                value={neueAdresse}
+                onChange={(e) => { setNeueAdresse(e.target.value); setNeueKoordinaten(null) }}
+              />
+            )}
           </label>
           <button type="submit" style={knopfStil}>Projekt speichern</button>
         </form>

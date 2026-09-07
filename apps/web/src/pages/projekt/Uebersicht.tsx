@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabaseClient'
-import { adresseZuKoordinaten } from '../../lib/wetter'
+import AdresseSuche, { googleAdresssucheVerfuegbar } from '../../components/AdresseSuche'
 import { eingabeStil, knopfStil, karteStil, projektStatusLabel } from '../stil'
 
 export type ProjektDetails = {
@@ -10,10 +10,9 @@ export type ProjektDetails = {
   status: string
   vorhabenart: string | null
   gebaeudeklasse: string | null
-  start_datum: string | null
-  end_datum_geplant: string | null
   kunde_name: string | null
   kunde_kontakt: string | null
+  kunde_rechnungsadresse: string | null
 }
 
 type Beteiligter = {
@@ -29,6 +28,15 @@ const vorhabenartLabel: Record<string, string> = {
   anbau: 'Anbau/Erweiterung',
 }
 
+const gebaeudeklasseOptionen = [
+  'Wohnung/ETW',
+  'Einfamilienhaus',
+  'Mehrfamilienhaus',
+  'Hochhaus',
+  'Gebäudekomplex',
+  'Gewerbe/Sonderbau',
+]
+
 export default function Uebersicht({
   projekt,
   onAktualisiert,
@@ -37,19 +45,15 @@ export default function Uebersicht({
   onAktualisiert: () => void
 }) {
   const [form, setForm] = useState(projekt)
+  const [neueKoordinaten, setNeueKoordinaten] = useState<{ breitengrad: number; laengengrad: number } | null>(null)
   const [speichertStatus, setSpeichertStatus] = useState<'inaktiv' | 'speichert' | 'gespeichert'>('inaktiv')
+  const googleAktiv = googleAdresssucheVerfuegbar()
 
-  useEffect(() => setForm(projekt), [projekt])
+  useEffect(() => { setForm(projekt); setNeueKoordinaten(null) }, [projekt])
 
   async function speichern(e: FormEvent) {
     e.preventDefault()
     setSpeichertStatus('speichert')
-
-    let koordinatenUpdate = {}
-    if (form.adresse && form.adresse !== projekt.adresse) {
-      const koordinaten = await adresseZuKoordinaten(form.adresse)
-      if (koordinaten) koordinatenUpdate = koordinaten
-    }
 
     const { error } = await supabase
       .from('projekte')
@@ -58,11 +62,10 @@ export default function Uebersicht({
         status: form.status,
         vorhabenart: form.vorhabenart || null,
         gebaeudeklasse: form.gebaeudeklasse || null,
-        start_datum: form.start_datum || null,
-        end_datum_geplant: form.end_datum_geplant || null,
         kunde_name: form.kunde_name || null,
         kunde_kontakt: form.kunde_kontakt || null,
-        ...koordinatenUpdate,
+        kunde_rechnungsadresse: form.kunde_rechnungsadresse || null,
+        ...(neueKoordinaten ?? {}),
       })
       .eq('id', projekt.id)
 
@@ -75,11 +78,25 @@ export default function Uebersicht({
       <form onSubmit={speichern} style={{ ...karteStil, display: 'flex', flexDirection: 'column', gap: 14 }}>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: 0 }}>Projektdaten</h2>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
-            Adresse
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+          Baustellen-Adresse
+          {form.adresse && (
+            <div style={{ fontSize: 13, color: 'var(--ink)', padding: '8px 0' }}>{form.adresse}</div>
+          )}
+          {googleAktiv ? (
+            <AdresseSuche
+              platzhalter={form.adresse ? 'Andere Adresse suchen …' : 'Adresse eingeben und Vorschlag auswählen …'}
+              onAuswahl={(a) => {
+                setForm({ ...form, adresse: a.adresse })
+                setNeueKoordinaten({ breitengrad: a.breitengrad, laengengrad: a.laengengrad })
+              }}
+            />
+          ) : (
             <input style={eingabeStil} value={form.adresse ?? ''} onChange={(e) => setForm({ ...form, adresse: e.target.value })} />
-          </label>
+          )}
+        </label>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
             Status
             <select style={eingabeStil} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
@@ -103,30 +120,14 @@ export default function Uebersicht({
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
             Gebäudeklasse
-            <input
+            <select
               style={eingabeStil}
               value={form.gebaeudeklasse ?? ''}
               onChange={(e) => setForm({ ...form, gebaeudeklasse: e.target.value })}
-              placeholder="z.B. Einfamilienhaus"
-            />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
-            Start (geplant)
-            <input
-              type="date"
-              style={eingabeStil}
-              value={form.start_datum ?? ''}
-              onChange={(e) => setForm({ ...form, start_datum: e.target.value })}
-            />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
-            Ende (geplant)
-            <input
-              type="date"
-              style={eingabeStil}
-              value={form.end_datum_geplant ?? ''}
-              onChange={(e) => setForm({ ...form, end_datum_geplant: e.target.value })}
-            />
+            >
+              <option value="">– nicht gesetzt –</option>
+              {gebaeudeklasseOptionen.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
           </label>
         </div>
 
@@ -141,6 +142,24 @@ export default function Uebersicht({
             <input style={eingabeStil} value={form.kunde_kontakt ?? ''} onChange={(e) => setForm({ ...form, kunde_kontakt: e.target.value })} />
           </label>
         </div>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+          Rechnungsadresse (falls abweichend von der Baustelle)
+          {form.kunde_rechnungsadresse && (
+            <div style={{ fontSize: 13, color: 'var(--ink)', padding: '8px 0' }}>{form.kunde_rechnungsadresse}</div>
+          )}
+          {googleAktiv ? (
+            <AdresseSuche
+              platzhalter="Rechnungsadresse suchen …"
+              onAuswahl={(a) => setForm({ ...form, kunde_rechnungsadresse: a.adresse })}
+            />
+          ) : (
+            <input
+              style={eingabeStil}
+              value={form.kunde_rechnungsadresse ?? ''}
+              onChange={(e) => setForm({ ...form, kunde_rechnungsadresse: e.target.value })}
+            />
+          )}
+        </label>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button type="submit" style={knopfStil} disabled={speichertStatus === 'speichert'}>
@@ -208,7 +227,7 @@ function BeteiligteListe({ projektId }: { projektId: string }) {
       </div>
       <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-faint)' }}>
         Handwerker, Architekt, Bauherr & Co. als einfache Kontaktliste – ohne eigenes Werkfluss-Konto.
-        Echte Einladung mit eigenem Login folgt als separater Baustein.
+        Echte Firmen mit eigenem Login einladen (inkl. Verknüpfung zur Firma) ist der nächste Ausbauschritt.
       </p>
 
       {zeigeFormular && (
