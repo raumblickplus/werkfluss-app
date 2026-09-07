@@ -169,6 +169,7 @@ export default function Uebersicht({
         </div>
       </form>
 
+      <FirmenBeteiligte projektId={projekt.id} />
       <BeteiligteListe projektId={projekt.id} />
     </div>
   )
@@ -271,6 +272,189 @@ function BeteiligteListe({ projektId }: { projektId: string }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+
+type ProjektFirma = {
+  id: string
+  rolle_im_projekt: string
+  gewerk: string | null
+  firmen: { id: string; name: string } | null
+}
+
+type Einladung = {
+  id: string
+  rolle_im_projekt: string
+  gewerk: string | null
+  token: string
+  status: string
+  erstellt_am: string
+}
+
+const rolleLabelKarte: Record<string, string> = {
+  generalunternehmer: 'Generalunternehmer',
+  handwerker: 'Handwerker',
+  architekt: 'Architekt',
+  bauherr: 'Bauherr',
+}
+
+function FirmenBeteiligte({ projektId }: { projektId: string }) {
+  const [firmenListe, setFirmenListe] = useState<ProjektFirma[]>([])
+  const [einladungen, setEinladungen] = useState<Einladung[]>([])
+  const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
+  const [zeigeFormular, setZeigeFormular] = useState(false)
+  const [rolle, setRolle] = useState('handwerker')
+  const [gewerkEingabe, setGewerkEingabe] = useState('')
+  const [neuerLink, setNeuerLink] = useState<string | null>(null)
+  const [kopiertId, setKopiertId] = useState<string | null>(null)
+
+  async function laden() {
+    setLadeStatus('laedt')
+    const [{ data: firmenData, error: firmenFehler }, { data: einladungenData }] = await Promise.all([
+      supabase
+        .from('projekt_mitglieder')
+        .select('id, rolle_im_projekt, gewerk, firmen(id, name)')
+        .eq('projekt_id', projektId),
+      supabase
+        .from('projekt_einladungen')
+        .select('id, rolle_im_projekt, gewerk, token, status, erstellt_am')
+        .eq('projekt_id', projektId)
+        .eq('status', 'offen')
+        .order('erstellt_am', { ascending: false }),
+    ])
+    if (firmenFehler) { setLadeStatus('fehler'); return }
+    setFirmenListe((firmenData ?? []) as unknown as ProjektFirma[])
+    setEinladungen(einladungenData ?? [])
+    setLadeStatus('bereit')
+  }
+
+  useEffect(() => { laden() }, [projektId])
+
+  async function einladen(e: FormEvent) {
+    e.preventDefault()
+    const { data, error } = await supabase.rpc('einladung_erstellen', {
+      p_projekt_id: projektId,
+      p_rolle: rolle,
+      p_gewerk: gewerkEingabe || null,
+    })
+    if (!error && data) {
+      setNeuerLink(`${window.location.origin}/einladung/${data}`)
+      setGewerkEingabe('')
+      laden()
+    }
+  }
+
+  async function zurueckziehen(id: string) {
+    await supabase.from('projekt_einladungen').delete().eq('id', id)
+    laden()
+  }
+
+  async function entfernen(id: string) {
+    await supabase.from('projekt_mitglieder').delete().eq('id', id)
+    laden()
+  }
+
+  function linkKopieren(token: string, id: string) {
+    const link = `${window.location.origin}/einladung/${token}`
+    navigator.clipboard?.writeText(link).then(() => {
+      setKopiertId(id)
+      setTimeout(() => setKopiertId(null), 1500)
+    })
+  }
+
+  return (
+    <div style={{ ...karteStil, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: 0 }}>Firmen im Projekt</h2>
+        <button style={knopfStil} onClick={() => { setZeigeFormular((v) => !v); setNeuerLink(null) }}>
+          {zeigeFormular ? 'Abbrechen' : '+ Firma einladen'}
+        </button>
+      </div>
+      <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-faint)' }}>
+        Lade andere Firmen (Handwerker, Architekt, Bauherr) mit eigenem Werkfluss-Login zu diesem Projekt ein.
+        Sie sehen dann nur dieses Projekt, nicht deine anderen.
+      </p>
+
+      {zeigeFormular && (
+        <form onSubmit={einladen} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--ink-dim)' }}>
+            Rolle
+            <select style={eingabeStil} value={rolle} onChange={(e) => setRolle(e.target.value)}>
+              <option value="handwerker">Handwerker</option>
+              <option value="architekt">Architekt</option>
+              <option value="bauherr">Bauherr</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--ink-dim)', flex: '1 1 160px' }}>
+            Gewerk (optional)
+            <input
+              style={eingabeStil}
+              value={gewerkEingabe}
+              onChange={(e) => setGewerkEingabe(e.target.value)}
+              placeholder="z.B. Elektroinstallation"
+            />
+          </label>
+          <button type="submit" style={knopfStil}>Link erzeugen</button>
+        </form>
+      )}
+
+      {neuerLink && (
+        <div style={{ background: 'oklch(96% 0.02 90)', borderRadius: 10, padding: '10px 12px', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ color: 'var(--ink-dim)' }}>Link kopieren und der Firma schicken (z.B. per WhatsApp/E-Mail):</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input readOnly value={neuerLink} style={{ ...eingabeStil, flex: 1 }} onFocus={(e) => e.target.select()} />
+            <button type="button" style={knopfStil} onClick={() => navigator.clipboard?.writeText(neuerLink)}>Kopieren</button>
+          </div>
+        </div>
+      )}
+
+      {ladeStatus === 'laedt' && <p style={{ color: 'var(--ink-faint)', margin: 0 }}>Lade …</p>}
+      {ladeStatus === 'fehler' && <p style={{ color: 'var(--red)', margin: 0 }}>Konnte nicht geladen werden.</p>}
+
+      {firmenListe.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {firmenListe.map((f) => (
+            <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>{f.firmen?.name ?? 'Unbekannte Firma'}</span>
+                <span style={{ fontSize: 12, color: 'var(--ink-faint)', marginLeft: 8 }}>
+                  {rolleLabelKarte[f.rolle_im_projekt] ?? f.rolle_im_projekt}{f.gewerk ? ` · ${f.gewerk}` : ''}
+                </span>
+              </div>
+              <button onClick={() => entfernen(f.id)} style={{ background: 'none', border: 'none', color: 'var(--ink-faint)', cursor: 'pointer', fontSize: 12 }}>
+                Entfernen
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {einladungen.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--ink-faint)' }}>Offene Einladungen</p>
+          {einladungen.map((e) => (
+            <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 13, color: 'var(--ink-dim)' }}>
+                {rolleLabelKarte[e.rolle_im_projekt] ?? e.rolle_im_projekt}{e.gewerk ? ` · ${e.gewerk}` : ''}
+              </span>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => linkKopieren(e.token, e.id)} style={{ background: 'none', border: 'none', color: 'var(--orange-text)', cursor: 'pointer', fontSize: 12 }}>
+                  {kopiertId === e.id ? 'Kopiert ✓' : 'Link kopieren'}
+                </button>
+                <button onClick={() => zurueckziehen(e.id)} style={{ background: 'none', border: 'none', color: 'var(--ink-faint)', cursor: 'pointer', fontSize: 12 }}>
+                  Zurückziehen
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {ladeStatus === 'bereit' && firmenListe.length === 0 && einladungen.length === 0 && (
+        <p style={{ color: 'var(--ink-faint)', margin: 0 }}>Noch keine Firma eingeladen.</p>
+      )}
     </div>
   )
 }
