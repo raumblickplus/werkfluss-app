@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
+import Logo from '../components/Logo'
 import { eingabeStil, knopfStil, karteStil } from './stil'
 
 export default function FirmaAnlegen() {
@@ -24,7 +25,8 @@ export default function FirmaAnlegen() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 20 }}>
+      <Logo />
       <form onSubmit={absenden} style={{ ...karteStil, width: 380, display: 'flex', flexDirection: 'column', gap: 14 }}>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, margin: 0 }}>Firma anlegen</h1>
         <p style={{ margin: 0, color: 'var(--ink-dim)', fontSize: 14 }}>

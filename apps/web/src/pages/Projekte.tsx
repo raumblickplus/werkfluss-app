@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
+import Logo from '../components/Logo'
 import { eingabeStil, knopfStil, karteStil, knopfSekundaerStil } from './stil'
 
 type Projekt = {
@@ -68,6 +69,8 @@ export default function Projekte() {
   return (
     <div style={{ minHeight: '100vh', padding: '32px 24px', maxWidth: 760, margin: '0 auto' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <Logo size={44} />
         <div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, margin: 0 }}>Projekte</h1>
           {firmen.length > 1 ? (
@@ -83,6 +86,7 @@ export default function Projekte() {
           ) : (
             <p style={{ margin: '4px 0 0', color: 'var(--ink-dim)', fontSize: 14 }}>{aktivFirma?.name}</p>
           )}
+        </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button style={knopfStil} onClick={() => setZeigeFormular((v) => !v)}>
