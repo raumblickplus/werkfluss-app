@@ -35,3 +35,11 @@ export const knopfSekundaerStil: CSSProperties = {
   color: 'var(--ink)',
   border: '1px solid var(--border)',
 }
+
+export const projektStatusLabel: Record<string, string> = {
+  planung: 'Planung',
+  ausfuehrung: 'Ausführung',
+  abnahme: 'Abnahme',
+  abgeschlossen: 'Abgeschlossen',
+  pausiert: 'Pausiert',
+}

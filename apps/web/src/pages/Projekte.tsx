@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabaseClient'
 import { adresseZuKoordinaten } from '../lib/wetter'
 import { useAuth } from '../lib/AuthContext'
 import Logo from '../components/Logo'
-import { eingabeStil, knopfStil, karteStil, knopfSekundaerStil } from './stil'
+import { eingabeStil, knopfStil, karteStil, knopfSekundaerStil, projektStatusLabel } from './stil'
 
 type Projekt = {
   id: string
@@ -12,14 +12,6 @@ type Projekt = {
   status: string
   adresse: string | null
   start_datum: string | null
-}
-
-const statusLabel: Record<string, string> = {
-  planung: 'Planung',
-  ausfuehrung: 'Ausführung',
-  abnahme: 'Abnahme',
-  abgeschlossen: 'Abgeschlossen',
-  pausiert: 'Pausiert',
 }
 
 export default function Projekte() {
@@ -132,7 +124,7 @@ export default function Projekte() {
                 {p.adresse && <div style={{ fontSize: 13, color: 'var(--ink-dim)' }}>{p.adresse}</div>}
               </div>
               <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'oklch(93% 0.01 70)', color: 'var(--ink-dim)' }}>
-                {statusLabel[p.status] ?? p.status}
+                {projektStatusLabel[p.status] ?? p.status}
               </span>
             </div>
           </Link>

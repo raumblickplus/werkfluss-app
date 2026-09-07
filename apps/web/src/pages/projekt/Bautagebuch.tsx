@@ -3,13 +3,21 @@ import { supabase } from '../../lib/supabaseClient'
 import { adresseZuKoordinaten, aktuellesWetter, type Koordinaten } from '../../lib/wetter'
 import { eingabeStil, knopfStil, karteStil } from '../stil'
 
+type Gewerk = { id: string; name: string }
+type Standardaufgabe = { id: string; titel: string }
+type Beteiligter = { id: string; name: string; rolle: string | null }
+
 type Eintrag = {
   id: string
   datum: string
   wetter: string | null
   temperatur_grad: number | null
-  taetigkeiten: string
+  taetigkeiten: string | null
   besonderheiten: string | null
+  kunde_anwesend: boolean
+  gewerke: { name: string } | null
+  bautagebuch_aufgaben: { titel: string; erledigt: boolean }[]
+  bautagebuch_anwesende: { projekt_beteiligte: { name: string } | null }[]
 }
 
 type Props = {
@@ -22,56 +30,76 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
   const [eintraege, setEintraege] = useState<Eintrag[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
   const [zeigeFormular, setZeigeFormular] = useState(false)
+
+  const [gewerke, setGewerke] = useState<Gewerk[]>([])
+  const [beteiligte, setBeteiligte] = useState<Beteiligter[]>([])
+  const [gewerkId, setGewerkId] = useState('')
+  const [standardaufgaben, setStandardaufgaben] = useState<Standardaufgabe[]>([])
+  const [erledigteIds, setErledigteIds] = useState<Set<string>>(new Set())
+  const [zusatzaufgaben, setZusatzaufgaben] = useState<string[]>([])
+  const [neueZusatzaufgabe, setNeueZusatzaufgabe] = useState('')
+  const [anwesendeIds, setAnwesendeIds] = useState<Set<string>>(new Set())
+  const [kundeAnwesend, setKundeAnwesend] = useState(false)
+
   const [taetigkeiten, setTaetigkeiten] = useState('')
   const [wetter, setWetter] = useState('')
   const [temperatur, setTemperatur] = useState('')
   const [besonderheiten, setBesonderheiten] = useState('')
   const [wetterStatus, setWetterStatus] = useState<'inaktiv' | 'laedt' | 'gefunden' | 'nicht_gefunden'>('inaktiv')
+  const [sendet, setSendet] = useState(false)
 
   async function laden() {
     setLadeStatus('laedt')
     const { data, error } = await supabase
       .from('bautagebuch_eintraege')
-      .select('id, datum, wetter, temperatur_grad, taetigkeiten, besonderheiten')
+      .select(
+        'id, datum, wetter, temperatur_grad, taetigkeiten, besonderheiten, kunde_anwesend, gewerke(name), bautagebuch_aufgaben(titel, erledigt), bautagebuch_anwesende(projekt_beteiligte(name))'
+      )
       .eq('projekt_id', projektId)
       .order('datum', { ascending: false })
       .order('erstellt_am', { ascending: false })
 
     if (error) { setLadeStatus('fehler'); return }
-    setEintraege(data ?? [])
+    setEintraege((data ?? []) as unknown as Eintrag[])
     setLadeStatus('bereit')
   }
 
   useEffect(() => { laden() }, [projektId])
 
+  useEffect(() => {
+    supabase.from('gewerke').select('id, name').order('sortierung').then(({ data }) => setGewerke(data ?? []))
+    supabase
+      .from('projekt_beteiligte')
+      .select('id, name, rolle')
+      .eq('projekt_id', projektId)
+      .then(({ data }) => setBeteiligte(data ?? []))
+  }, [projektId])
+
+  useEffect(() => {
+    if (!gewerkId) { setStandardaufgaben([]); setErledigteIds(new Set()); return }
+    supabase
+      .from('gewerk_standardaufgaben')
+      .select('id, titel')
+      .eq('gewerk_id', gewerkId)
+      .order('sortierung')
+      .then(({ data }) => {
+        setStandardaufgaben(data ?? [])
+        setErledigteIds(new Set())
+      })
+  }, [gewerkId])
+
   async function wetterLaden() {
     setWetterStatus('laedt')
-
     let punkt = koordinaten
     if (!punkt && adresse) {
       punkt = await adresseZuKoordinaten(adresse)
-      // Gefundene Koordinaten am Projekt zwischenspeichern, damit der nächste
-      // Eintrag nicht erneut geokodieren muss.
       if (punkt) {
-        supabase
-          .from('projekte')
-          .update({ breitengrad: punkt.breitengrad, laengengrad: punkt.laengengrad })
-          .eq('id', projektId)
-          .then(() => {})
+        supabase.from('projekte').update({ breitengrad: punkt.breitengrad, laengengrad: punkt.laengengrad }).eq('id', projektId).then(() => {})
       }
     }
-
-    if (!punkt) {
-      setWetterStatus('nicht_gefunden')
-      return
-    }
-
+    if (!punkt) { setWetterStatus('nicht_gefunden'); return }
     const wetterDaten = await aktuellesWetter(punkt)
-    if (!wetterDaten) {
-      setWetterStatus('nicht_gefunden')
-      return
-    }
-
+    if (!wetterDaten) { setWetterStatus('nicht_gefunden'); return }
     setWetter(wetterDaten.beschreibung)
     setTemperatur(String(Math.round(wetterDaten.temperatur)))
     setWetterStatus('gefunden')
@@ -82,23 +110,80 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
     wetterLaden()
   }
 
+  function toggleErledigt(id: string) {
+    setErledigteIds((vorherig) => {
+      const neu = new Set(vorherig)
+      neu.has(id) ? neu.delete(id) : neu.add(id)
+      return neu
+    })
+  }
+
+  function toggleAnwesend(id: string) {
+    setAnwesendeIds((vorherig) => {
+      const neu = new Set(vorherig)
+      neu.has(id) ? neu.delete(id) : neu.add(id)
+      return neu
+    })
+  }
+
+  function zusatzaufgabeHinzufuegen() {
+    if (!neueZusatzaufgabe.trim()) return
+    setZusatzaufgaben((v) => [...v, neueZusatzaufgabe.trim()])
+    setNeueZusatzaufgabe('')
+  }
+
+  function formularZuruecksetzen() {
+    setGewerkId(''); setStandardaufgaben([]); setErledigteIds(new Set())
+    setZusatzaufgaben([]); setNeueZusatzaufgabe('')
+    setAnwesendeIds(new Set()); setKundeAnwesend(false)
+    setTaetigkeiten(''); setWetter(''); setTemperatur(''); setBesonderheiten('')
+    setWetterStatus('inaktiv')
+  }
+
   async function anlegen(e: FormEvent) {
     e.preventDefault()
+    setSendet(true)
     const { data: { user } } = await supabase.auth.getUser()
-    const { error } = await supabase.from('bautagebuch_eintraege').insert({
-      projekt_id: projektId,
-      autor_id: user?.id,
-      taetigkeiten,
-      wetter: wetter || null,
-      temperatur_grad: temperatur ? Number(temperatur) : null,
-      besonderheiten: besonderheiten || null,
-    })
-    if (!error) {
-      setTaetigkeiten(''); setWetter(''); setTemperatur(''); setBesonderheiten('')
-      setZeigeFormular(false)
-      setWetterStatus('inaktiv')
-      laden()
+
+    const { data: neuerEintrag, error } = await supabase
+      .from('bautagebuch_eintraege')
+      .insert({
+        projekt_id: projektId,
+        autor_id: user?.id,
+        gewerk_id: gewerkId || null,
+        kunde_anwesend: kundeAnwesend,
+        taetigkeiten: taetigkeiten || null,
+        wetter: wetter || null,
+        temperatur_grad: temperatur ? Number(temperatur) : null,
+        besonderheiten: besonderheiten || null,
+      })
+      .select('id')
+      .single()
+
+    if (error || !neuerEintrag) { setSendet(false); return }
+
+    const anwesendeZeilen = Array.from(anwesendeIds).map((beteiligter_id) => ({
+      bautagebuch_id: neuerEintrag.id,
+      beteiligter_id,
+    }))
+    if (anwesendeZeilen.length > 0) {
+      await supabase.from('bautagebuch_anwesende').insert(anwesendeZeilen)
     }
+
+    const aufgabenZeilen = [
+      ...standardaufgaben
+        .filter((a) => erledigteIds.has(a.id))
+        .map((a) => ({ bautagebuch_id: neuerEintrag.id, standardaufgabe_id: a.id, titel: a.titel, erledigt: true })),
+      ...zusatzaufgaben.map((titel) => ({ bautagebuch_id: neuerEintrag.id, standardaufgabe_id: null, titel, erledigt: true })),
+    ]
+    if (aufgabenZeilen.length > 0) {
+      await supabase.from('bautagebuch_aufgaben').insert(aufgabenZeilen)
+    }
+
+    formularZuruecksetzen()
+    setZeigeFormular(false)
+    setSendet(false)
+    laden()
   }
 
   return (
@@ -110,16 +195,75 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
       </div>
 
       {zeigeFormular && (
-        <form onSubmit={anlegen} style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form onSubmit={anlegen} style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
-            Tätigkeiten heute
-            <textarea
-              style={{ ...eingabeStil, minHeight: 70, fontFamily: 'inherit' }}
-              value={taetigkeiten}
-              onChange={(e) => setTaetigkeiten(e.target.value)}
-              required
-            />
+            Gewerk (für welches Gewerk gilt dieser Eintrag?)
+            <select style={eingabeStil} value={gewerkId} onChange={(e) => setGewerkId(e.target.value)}>
+              <option value="">– auswählen –</option>
+              {gewerke.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
           </label>
+
+          {gewerkId && (
+            <div>
+              <div style={{ fontSize: 13, color: 'var(--ink-dim)', marginBottom: 6 }}>Erledigte Aufgaben heute</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'rgba(40,28,14,.03)', borderRadius: 10, padding: 10 }}>
+                {standardaufgaben.map((a) => (
+                  <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={erledigteIds.has(a.id)} onChange={() => toggleErledigt(a.id)} />
+                    {a.titel}
+                  </label>
+                ))}
+                {zusatzaufgaben.map((titel, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+                    <input type="checkbox" checked readOnly />
+                    {titel}
+                    <button
+                      type="button"
+                      onClick={() => setZusatzaufgaben((v) => v.filter((_, idx) => idx !== i))}
+                      style={{ background: 'none', border: 'none', color: 'var(--ink-faint)', cursor: 'pointer', fontSize: 12, marginLeft: 'auto' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <input
+                    style={{ ...eingabeStil, flex: 1 }}
+                    placeholder="Weitere Aufgabe hinzufügen …"
+                    value={neueZusatzaufgabe}
+                    onChange={(e) => setNeueZusatzaufgabe(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); zusatzaufgabeHinzufuegen() } }}
+                  />
+                  <button type="button" onClick={zusatzaufgabeHinzufuegen} style={{ ...eingabeStil, cursor: 'pointer' }}>+ Hinzufügen</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {beteiligte.length > 0 && (
+            <div>
+              <div style={{ fontSize: 13, color: 'var(--ink-dim)', marginBottom: 6 }}>Wer war heute vor Ort?</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {beteiligte.map((b) => (
+                  <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, background: 'rgba(40,28,14,.04)', padding: '6px 10px', borderRadius: 999, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={anwesendeIds.has(b.id)} onChange={() => toggleAnwesend(b.id)} />
+                    {b.name}{b.rolle ? ` (${b.rolle})` : ''}
+                  </label>
+                ))}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, background: 'rgba(40,28,14,.04)', padding: '6px 10px', borderRadius: 999, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={kundeAnwesend} onChange={(e) => setKundeAnwesend(e.target.checked)} />
+                  Kunde/Bauherr
+                </label>
+              </div>
+            </div>
+          )}
+          {beteiligte.length === 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={kundeAnwesend} onChange={(e) => setKundeAnwesend(e.target.checked)} />
+              Kunde/Bauherr war heute vor Ort
+            </label>
+          )}
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', flex: 2 }}>
@@ -130,60 +274,66 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
               °C
               <input style={eingabeStil} value={temperatur} onChange={(e) => setTemperatur(e.target.value)} inputMode="numeric" />
             </label>
-            <button
-              type="button"
-              onClick={wetterLaden}
-              title="Wetter erneut automatisch abrufen"
-              style={{ ...eingabeStil, cursor: 'pointer', padding: '10px 12px' }}
-            >
+            <button type="button" onClick={wetterLaden} title="Wetter erneut automatisch abrufen" style={{ ...eingabeStil, cursor: 'pointer', padding: '10px 12px' }}>
               🔄
             </button>
           </div>
           {wetterStatus === 'laedt' && <div style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Wetter wird automatisch geladen …</div>}
           {wetterStatus === 'gefunden' && <div style={{ fontSize: 12, color: 'var(--olive)' }}>Automatisch anhand des Projektstandorts geladen – bei Bedarf anpassen.</div>}
           {wetterStatus === 'nicht_gefunden' && (
-            <div style={{ fontSize: 12, color: 'var(--ink-faint)' }}>
-              Konnte den Standort nicht automatisch bestimmen (Adresse am Projekt prüfen) – bitte Wetter manuell eintragen.
-            </div>
+            <div style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Konnte den Standort nicht automatisch bestimmen – bitte Wetter manuell eintragen.</div>
           )}
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
-            Besonderheiten (optional)
-            <textarea
-              style={{ ...eingabeStil, minHeight: 50, fontFamily: 'inherit' }}
-              value={besonderheiten}
-              onChange={(e) => setBesonderheiten(e.target.value)}
-            />
+            Notizen (optional, zusätzlich zur Checkliste)
+            <textarea style={{ ...eingabeStil, minHeight: 50, fontFamily: 'inherit' }} value={taetigkeiten} onChange={(e) => setTaetigkeiten(e.target.value)} />
           </label>
-          <button type="submit" style={knopfStil}>Eintrag speichern</button>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+            Besonderheiten (optional)
+            <textarea style={{ ...eingabeStil, minHeight: 50, fontFamily: 'inherit' }} value={besonderheiten} onChange={(e) => setBesonderheiten(e.target.value)} />
+          </label>
+          <button type="submit" style={knopfStil} disabled={sendet}>{sendet ? 'Speichert …' : 'Eintrag speichern'}</button>
         </form>
       )}
 
       {ladeStatus === 'laedt' && <p style={{ color: 'var(--ink-faint)' }}>Lade Bautagebuch …</p>}
       {ladeStatus === 'fehler' && <p style={{ color: 'var(--red)' }}>Bautagebuch konnte nicht geladen werden.</p>}
-      {ladeStatus === 'bereit' && eintraege.length === 0 && (
-        <p style={{ color: 'var(--ink-faint)' }}>Noch keine Einträge.</p>
-      )}
+      {ladeStatus === 'bereit' && eintraege.length === 0 && <p style={{ color: 'var(--ink-faint)' }}>Noch keine Einträge.</p>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {eintraege.map((e) => (
-          <div key={e.id} style={{ ...karteStil, padding: '14px 18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontWeight: 700, fontSize: 13 }}>
-                {new Date(e.datum).toLocaleDateString('de-DE')}
-              </span>
-              {e.wetter && (
-                <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>
-                  {e.wetter}{e.temperatur_grad !== null ? `, ${e.temperatur_grad}°C` : ''}
+        {eintraege.map((e) => {
+          const erledigt = e.bautagebuch_aufgaben.filter((a) => a.erledigt)
+          const anwesendeNamen = e.bautagebuch_anwesende.map((a) => a.projekt_beteiligte?.name).filter(Boolean) as string[]
+          return (
+            <div key={e.id} style={{ ...karteStil, padding: '14px 18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>
+                  {new Date(e.datum).toLocaleDateString('de-DE')}{e.gewerke ? ` · ${e.gewerke.name}` : ''}
                 </span>
+                {e.wetter && <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>{e.wetter}{e.temperatur_grad !== null ? `, ${e.temperatur_grad}°C` : ''}</span>}
+              </div>
+
+              {erledigt.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {erledigt.map((a, i) => (
+                    <span key={i} style={{ fontSize: 12, background: 'oklch(90% 0.08 148)', color: 'oklch(30% 0.08 148)', padding: '3px 9px', borderRadius: 999 }}>
+                      ✓ {a.titel}
+                    </span>
+                  ))}
+                </div>
               )}
+
+              {(anwesendeNamen.length > 0 || e.kunde_anwesend) && (
+                <div style={{ fontSize: 12, color: 'var(--ink-faint)', marginBottom: 6 }}>
+                  Anwesend: {[...anwesendeNamen, ...(e.kunde_anwesend ? ['Kunde/Bauherr'] : [])].join(', ')}
+                </div>
+              )}
+
+              {e.taetigkeiten && <div style={{ fontSize: 14 }}>{e.taetigkeiten}</div>}
+              {e.besonderheiten && <div style={{ fontSize: 13, color: 'var(--orange-text)', marginTop: 6 }}>⚠ {e.besonderheiten}</div>}
             </div>
-            <div style={{ fontSize: 14 }}>{e.taetigkeiten}</div>
-            {e.besonderheiten && (
-              <div style={{ fontSize: 13, color: 'var(--orange-text)', marginTop: 6 }}>⚠ {e.besonderheiten}</div>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

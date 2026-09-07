@@ -1,32 +1,37 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
+import Uebersicht, { type ProjektDetails } from './projekt/Uebersicht'
 import Bautagebuch from './projekt/Bautagebuch'
 import Maengel from './projekt/Maengel'
 import Aufgaben from './projekt/Aufgaben'
 
-type Projekt = { id: string; name: string; adresse: string | null; status: string; breitengrad: number | null; laengengrad: number | null }
-type Tab = 'bautagebuch' | 'maengel' | 'aufgaben'
+type Projekt = ProjektDetails & { breitengrad: number | null; laengengrad: number | null }
+type Tab = 'uebersicht' | 'bautagebuch' | 'maengel' | 'aufgaben'
 
 const tabs: { key: Tab; label: string }[] = [
+  { key: 'uebersicht', label: 'Übersicht' },
   { key: 'bautagebuch', label: 'Bautagebuch' },
   { key: 'maengel', label: 'Mängel' },
   { key: 'aufgaben', label: 'Aufgaben' },
 ]
+
+const PROJEKT_SPALTEN =
+  'id, name, adresse, status, vorhabenart, gebaeudeklasse, start_datum, end_datum_geplant, kunde_name, kunde_kontakt, breitengrad, laengengrad'
 
 export default function ProjektDetail() {
   const { id } = useParams<{ id: string }>()
   const [projekt, setProjekt] = useState<Projekt | null>(null)
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
   const [fehlerText, setFehlerText] = useState<string | null>(null)
-  const [aktivTab, setAktivTab] = useState<Tab>('bautagebuch')
+  const [aktivTab, setAktivTab] = useState<Tab>('uebersicht')
 
-  useEffect(() => {
+  const laden = useCallback(() => {
     if (!id) return
     setLadeStatus('laedt')
     supabase
       .from('projekte')
-      .select('id, name, adresse, status, breitengrad, laengengrad')
+      .select(PROJEKT_SPALTEN)
       .eq('id', id)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -39,6 +44,8 @@ export default function ProjektDetail() {
         setLadeStatus('bereit')
       })
   }, [id])
+
+  useEffect(() => { laden() }, [laden])
 
   if (ladeStatus === 'laedt') {
     return <div style={{ padding: 32, color: 'var(--ink-faint)' }}>Lädt …</div>
@@ -80,6 +87,7 @@ export default function ProjektDetail() {
         ))}
       </div>
 
+      {aktivTab === 'uebersicht' && <Uebersicht projekt={projekt} onAktualisiert={laden} />}
       {aktivTab === 'bautagebuch' && (
         <Bautagebuch
           projektId={id}
