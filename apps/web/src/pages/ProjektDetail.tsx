@@ -18,6 +18,7 @@ export default function ProjektDetail() {
   const { id } = useParams<{ id: string }>()
   const [projekt, setProjekt] = useState<Projekt | null>(null)
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
+  const [fehlerText, setFehlerText] = useState<string | null>(null)
   const [aktivTab, setAktivTab] = useState<Tab>('bautagebuch')
 
   useEffect(() => {
@@ -29,7 +30,11 @@ export default function ProjektDetail() {
       .eq('id', id)
       .maybeSingle()
       .then(({ data, error }) => {
-        if (error || !data) { setLadeStatus('fehler'); return }
+        if (error || !data) {
+          setFehlerText(error?.message ?? 'Kein Zugriff auf dieses Projekt.')
+          setLadeStatus('fehler')
+          return
+        }
         setProjekt(data)
         setLadeStatus('bereit')
       })
@@ -41,7 +46,7 @@ export default function ProjektDetail() {
   if (ladeStatus === 'fehler' || !projekt || !id) {
     return (
       <div style={{ padding: 32 }}>
-        <p style={{ color: 'var(--red)' }}>Projekt nicht gefunden oder kein Zugriff.</p>
+        <p style={{ color: 'var(--red)' }}>Projekt nicht gefunden oder kein Zugriff.{fehlerText ? ` (${fehlerText})` : ''}</p>
         <Link to="/" style={{ color: 'var(--orange-text)' }}>← Zurück zu den Projekten</Link>
       </div>
     )
