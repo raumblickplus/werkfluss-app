@@ -119,7 +119,7 @@ const navGroups: NavGroup[] = [
     akzent: { bg: '#575D46', text: '#F7F3E7' },
     items: [
       { id: 'kommunikation', label: 'Kommunikation', icon: ic.kommunikation },
-      { id: 'networking', label: 'Networking', icon: ic.networking },
+      { id: 'networking', label: 'Netzwerk', icon: ic.networking },
       { id: 'ausschreibung', label: 'Ausschreibung & LV', icon: ic.ausschreibung },
       { id: 'foerdermittel', label: 'Fördermittel', icon: ic.foerdermittel },
       { id: 'projektmappe', label: 'Projektmappe', icon: ic.projektmappe },
@@ -141,6 +141,7 @@ function pfadFuer(id: string) {
   if (id === 'buchhaltung') return '/finanzen?tab=buchhaltung'
   if (id === 'maengel') return '/maengel'
   if (id === 'tagesbericht') return '/tagesbericht'
+  if (id === 'networking') return '/netzwerk'
   if (id === 'einstellungen') return '/einstellungen'
   return `/modul/${id}`
 }
@@ -176,6 +177,7 @@ export default function AppShell({
     if (id === 'buchhaltung') return location.pathname === '/finanzen' && location.search === '?tab=buchhaltung'
     if (id === 'maengel') return location.pathname === '/maengel'
     if (id === 'tagesbericht') return location.pathname === '/tagesbericht'
+    if (id === 'networking') return location.pathname === '/netzwerk'
     if (id === 'einstellungen') return location.pathname === '/einstellungen'
     return location.pathname === `/modul/${id}`
   }

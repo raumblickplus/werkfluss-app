@@ -14,6 +14,7 @@ import Einstellungen from './pages/Einstellungen'
 import Finanzen from './pages/Finanzen'
 import Maengel from './pages/Maengel'
 import Tagesbericht from './pages/Tagesbericht'
+import Netzwerk from './pages/Netzwerk'
 
 export default function App() {
   const { session, ladeStatus, firmen } = useAuth()
@@ -53,6 +54,7 @@ export default function App() {
       <Route path="/finanzen" element={<Finanzen />} />
       <Route path="/maengel" element={<Maengel />} />
       <Route path="/tagesbericht" element={<Tagesbericht />} />
+      <Route path="/netzwerk" element={<Netzwerk />} />
       <Route path="/modul/:modulId" element={<ModulPlatzhalter />} />
     </Routes>
   )
