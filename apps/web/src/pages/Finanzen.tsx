@@ -55,6 +55,14 @@ function EuroIcon({ groesse = 38 }: { groesse?: number }) {
   )
 }
 
+function WarnBlockIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="4" /><path d="M12 8v5M12 16.2v.01" />
+    </svg>
+  )
+}
+
 export default function Finanzen() {
   const { aktivFirma } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -166,48 +174,43 @@ export default function Finanzen() {
           <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>
         ) : (
           <>
-            <div style={{ ...karteStil, padding: '30px 36px', marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 24 }}>
-              <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-                <div style={{ color: 'var(--olive-light)', flexShrink: 0, marginTop: 2 }}>
-                  <EuroIcon />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 14 }}>
+              <div className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
+                <div className="block-ticks" />
+                <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <EuroIcon groesse={14} />
+                  {new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })} &middot; Offene Forderungen
                 </div>
-                <div>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                    {new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}
-                  </div>
-                  <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(24px, 2.6vw, 34px)', fontWeight: 700, margin: '6px 0 0', letterSpacing: '-0.02em' }}>
-                    {heroText.titel}
-                  </h1>
-                  <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--ink-dim)', maxWidth: 480 }}>{heroText.subtitel}</p>
-                </div>
+                <div className="block-num" style={{ fontSize: 'clamp(34px, 3.6vw, 56px)' }}>{euro.format(offeneForderungenCents / 100)}</div>
+                <div className="block-sub">{heroText.titel}</div>
               </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap' }}>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                    {euro.format(offeneForderungenCents / 100)}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4 }}>Offene Forderungen</div>
+              <div className={`block ${ueberfaelligeSummeCents > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
+                <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {ueberfaelligeSummeCents > 0 && <WarnBlockIcon />}
+                  {ueberfaelligeSummeCents > 0 ? 'Überfällig' : 'Alles im Zeitplan'}
                 </div>
-                <div style={{ textAlign: 'right', borderLeft: '1px solid var(--glass-border)', paddingLeft: 24 }}>
-                  <div
-                    style={{
-                      fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1,
-                      color: ueberfaelligeSummeCents > 0 ? 'var(--red)' : 'inherit',
-                    }}
-                  >
-                    {euro.format(ueberfaelligeSummeCents / 100)}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4 }}>Überfällig</div>
-                </div>
+                <div className="block-num" style={{ fontSize: 'clamp(30px, 3.2vw, 48px)' }}>{euro.format(ueberfaelligeSummeCents / 100)}</div>
+                <div className="block-sub">{heroText.subtitel}</div>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
-              <Stat label="Aktive Auftragssumme (netto)" value={euro.format(aktiveAuftragsSummeCents / 100)} />
-              <Stat label="Angebote in Prüfung" value={euro.format(angeboteVersendetSummeCents / 100)} />
-              <Stat label="Rechnungen offen" value={String(offeneRechnungen.length)} />
-              <Stat label="Projekte mit Finanzdaten" value={String(projekteMitFinanzen.length)} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
+              <div className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Aktive Aufträge (netto)</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{euro.format(aktiveAuftragsSummeCents / 100)}</div>
+              </div>
+              <div className="block olive" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Angebote in Prüfung</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{euro.format(angeboteVersendetSummeCents / 100)}</div>
+              </div>
+              <div className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Rechnungen offen</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(offeneRechnungen.length)}</div>
+              </div>
+              <div className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Projekte mit Finanzdaten</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(projekteMitFinanzen.length)}</div>
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 20, marginBottom: 24 }}>
@@ -327,15 +330,6 @@ export default function Finanzen() {
 
       {aktivTab === 'buchhaltung' && <BuchhaltungTab />}
     </AppShell>
-  )
-}
-
-function Stat({ label, value, warnend }: { label: string; value: string; warnend?: boolean }) {
-  return (
-    <div className="stat liquid" style={{ padding: '18px 20px' }}>
-      <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'var(--font-display)', marginTop: 4, color: warnend ? 'var(--red)' : 'inherit' }}>{value}</div>
-    </div>
   )
 }
 

@@ -1,10 +1,12 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import Marke from './Marke'
 
 type NavItem = { id: string; label: string; icon: ReactNode }
-type NavGroup = { titel: string; items: NavItem[] }
+// Jede Gruppe bekommt eine eigene Blockfarbe (Akzent), damit die Sidebar
+// wie eine gestapelte Kachel-Navigation im neuen Farbblock-Design wirkt.
+type NavGroup = { titel: string; items: NavItem[]; akzent: { bg: string; text: string } }
 
 const ic = {
   dashboard: (
@@ -88,9 +90,14 @@ const ic = {
 } satisfies Record<string, ReactNode>
 
 const navGroups: NavGroup[] = [
-  { titel: 'Übersicht', items: [{ id: 'dashboard', label: 'Dashboard', icon: ic.dashboard }] },
+  {
+    titel: 'Übersicht',
+    akzent: { bg: '#C1552F', text: '#F7F3E7' },
+    items: [{ id: 'dashboard', label: 'Dashboard', icon: ic.dashboard }],
+  },
   {
     titel: 'Projekt (Baustelle)',
+    akzent: { bg: '#7C8566', text: '#F7F3E7' },
     items: [
       { id: 'projekte', label: 'Projekte', icon: ic.projekte },
       { id: 'zeitplan', label: 'Zeitplan', icon: ic.zeitplan },
@@ -101,6 +108,7 @@ const navGroups: NavGroup[] = [
   },
   {
     titel: 'Finanzen',
+    akzent: { bg: '#E2B62E', text: '#2A2410' },
     items: [
       { id: 'finanzen', label: 'Übersicht', icon: ic.finanzen },
       { id: 'buchhaltung', label: 'Buchhaltung', icon: ic.buchhaltung },
@@ -108,6 +116,7 @@ const navGroups: NavGroup[] = [
   },
   {
     titel: 'Zusammenarbeit',
+    akzent: { bg: '#575D46', text: '#F7F3E7' },
     items: [
       { id: 'kommunikation', label: 'Kommunikation', icon: ic.kommunikation },
       { id: 'networking', label: 'Networking', icon: ic.networking },
@@ -116,7 +125,11 @@ const navGroups: NavGroup[] = [
       { id: 'projektmappe', label: 'Projektmappe', icon: ic.projektmappe },
     ],
   },
-  { titel: 'Verwaltung', items: [{ id: 'team', label: 'Team', icon: ic.team }, { id: 'einstellungen', label: 'Einstellungen', icon: ic.einstellungen }] },
+  {
+    titel: 'Verwaltung',
+    akzent: { bg: '#FBF8F0', text: '#1C1A14' },
+    items: [{ id: 'team', label: 'Team', icon: ic.team }, { id: 'einstellungen', label: 'Einstellungen', icon: ic.einstellungen }],
+  },
 ]
 
 function pfadFuer(id: string) {
@@ -171,20 +184,24 @@ export default function AppShell({
     <div className="app">
       <div className="sidebar liquid">
         <div className="brand">
-          <Marke />
+          <Marke mitWort groesse={32} />
         </div>
         <div className="nav">
-          {navGroups.map((gruppe, i) => (
-            <div key={gruppe.titel} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
-              {i > 0 && <div style={{ width: 26, height: 1, background: 'rgba(255,250,240,.12)', margin: '5px 0' }} />}
+          {navGroups.map((gruppe) => (
+            <div
+              key={gruppe.titel}
+              className="nav-group"
+              style={{ '--accent-solid': gruppe.akzent.bg, '--accent-text': gruppe.akzent.text } as CSSProperties}
+            >
+              <div className="nav-group-title">{gruppe.titel}</div>
               {gruppe.items.map((item) => (
                 <button
                   key={item.id}
-                  className={istAktiv(item.id) ? 'active' : ''}
-                  data-tip={item.label}
+                  className={`nav-item${istAktiv(item.id) ? ' active' : ''}`}
                   onClick={() => navigate(pfadFuer(item.id))}
                 >
-                  {item.icon}
+                  <span className="ico">{item.icon}</span>
+                  <span className="lbl">{item.label}</span>
                 </button>
               ))}
             </div>
