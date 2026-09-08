@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import AppShell from '../components/AppShell'
 import Uebersicht, { type ProjektDetails } from './projekt/Uebersicht'
@@ -27,10 +27,19 @@ const PROJEKT_SPALTEN =
 
 export default function ProjektDetail() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [projekt, setProjekt] = useState<Projekt | null>(null)
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
   const [fehlerText, setFehlerText] = useState<string | null>(null)
-  const [aktivTab, setAktivTab] = useState<Tab>('uebersicht')
+  const tabAusUrl = searchParams.get('tab') as Tab | null
+  const [aktivTab, setAktivTab] = useState<Tab>(
+    tabAusUrl && tabs.some((t) => t.key === tabAusUrl) ? tabAusUrl : 'uebersicht'
+  )
+
+  function tabWechseln(tab: Tab) {
+    setAktivTab(tab)
+    setSearchParams(tab === 'uebersicht' ? {} : { tab }, { replace: true })
+  }
 
   const laden = useCallback(() => {
     if (!id) return
@@ -85,7 +94,7 @@ export default function ProjektDetail() {
           <button
             key={t.key}
             className={`tab${aktivTab === t.key ? ' active' : ''}`}
-            onClick={() => setAktivTab(t.key)}
+            onClick={() => tabWechseln(t.key)}
           >
             {t.label}
           </button>

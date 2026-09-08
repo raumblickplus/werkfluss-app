@@ -1,10 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#3a3226"/>
-      <stop offset="100%" stop-color="#241f18"/>
-    </linearGradient>
-  </defs>
-  <rect width="36" height="36" rx="11" fill="url(#g)"/>
-  <text x="18" y="25" font-family="Georgia, 'Bricolage Grotesque', serif" font-weight="800" font-size="19" fill="#faf6ee" text-anchor="middle">W</text>
+  <rect width="36" height="36" rx="10" fill="oklch(99% 0.006 85)" stroke="rgba(40,28,14,.18)" stroke-width="1"/>
+  <svg x="8.46" y="15.48" width="19.08" height="5.04" viewBox="0 0 360 90">
+    <path d="M20 60 L45 30 L70 60 L95 30 Q140 15 175 45 Q210 75 250 45 Q285 20 330 45"
+      fill="none" stroke="oklch(62% 0.17 52)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
 </svg>

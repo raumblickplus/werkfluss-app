@@ -116,6 +116,7 @@ const navGroups: NavGroup[] = [
 
 function pfadFuer(id: string) {
   if (id === 'projekte') return '/'
+  if (id === 'dashboard') return '/dashboard'
   if (id === 'team') return '/team'
   return `/modul/${id}`
 }
@@ -142,6 +143,7 @@ export default function AppShell({
 
   function istAktiv(id: string) {
     if (id === 'projekte') return location.pathname === '/' || location.pathname.startsWith('/projekte')
+    if (id === 'dashboard') return location.pathname === '/dashboard'
     if (id === 'team') return location.pathname === '/team'
     return location.pathname === `/modul/${id}`
   }

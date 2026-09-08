@@ -2,6 +2,7 @@ import { Routes, Route, useLocation } from 'react-router-dom'
 import { useAuth } from './lib/AuthContext'
 import Login from './pages/Login'
 import FirmaAnlegen from './pages/FirmaAnlegen'
+import Dashboard from './pages/Dashboard'
 import Projekte from './pages/Projekte'
 import ProjektDetail from './pages/ProjektDetail'
 import ModulPlatzhalter from './pages/ModulPlatzhalter'
@@ -39,6 +40,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Projekte />} />
+      <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/projekte/:id" element={<ProjektDetail />} />
       <Route path="/team" element={<Team />} />
       <Route path="/modul/:modulId" element={<ModulPlatzhalter />} />
