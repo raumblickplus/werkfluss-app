@@ -43,24 +43,32 @@ export default function EinladungAnnehmen() {
       })
   }, [token])
 
+  // Ein Bauherr hat keine eigene Firma (0021_bauherr_ohne_firma.sql) - für
+  // ihn läuft die Annahme über eine eigene RPC ohne p_firma_id, und er
+  // braucht vorher auch keine Firma anzulegen (siehe Render-Zweige unten).
+  const istBauherr = einladung?.rolle_im_projekt === 'bauherr'
+
   useEffect(() => {
-    if (!token || !session || !aktivFirma) return
+    if (!token || !session) return
+    if (!istBauherr && !aktivFirma) return
     if (!einladung || einladung.status !== 'offen') return
     if (annahmeStatus !== 'wartet') return
 
     setAnnahmeStatus('laeuft')
-    supabase
-      .rpc('einladung_annehmen', { p_token: token, p_firma_id: aktivFirma.id })
-      .then(({ data, error }) => {
-        if (error) {
-          setFehlerText(error.message)
-          setAnnahmeStatus('fehler')
-          return
-        }
-        setProjektId(data as string)
-        setAnnahmeStatus('fertig')
-      })
-  }, [token, session, aktivFirma, einladung, annahmeStatus])
+    const aufruf = istBauherr
+      ? supabase.rpc('einladung_annehmen_bauherr', { p_token: token })
+      : supabase.rpc('einladung_annehmen', { p_token: token, p_firma_id: aktivFirma!.id })
+
+    aufruf.then(({ data, error }) => {
+      if (error) {
+        setFehlerText(error.message)
+        setAnnahmeStatus('fehler')
+        return
+      }
+      setProjektId(data as string)
+      setAnnahmeStatus('fertig')
+    })
+  }, [token, session, aktivFirma, einladung, annahmeStatus, istBauherr])
 
   if (ladeEinladung === 'laedt') {
     return <MitteSeite><p style={{ color: 'var(--ink-faint)' }}>Lädt …</p></MitteSeite>
@@ -105,7 +113,9 @@ export default function EinladungAnnehmen() {
         {vorschau}
         <p style={{ color: 'var(--olive)' }}>Angenommen ✓ Du bist jetzt Teil dieses Projekts.</p>
         {projektId && (
-          <Link to={`/projekte/${projektId}`} style={knopfStil}>Zum Projekt</Link>
+          <Link to={istBauherr ? '/' : `/projekte/${projektId}`} style={knopfStil}>
+            {istBauherr ? 'Zu deinem Projekt' : 'Zum Projekt'}
+          </Link>
         )}
       </MitteSeite>
     )
@@ -130,7 +140,7 @@ export default function EinladungAnnehmen() {
       </div>
     )
   }
-  if (!aktivFirma) {
+  if (!aktivFirma && !istBauherr) {
     return (
       <div>
         <div style={{ maxWidth: 420, margin: '32px auto 0' }}>{vorschau}</div>

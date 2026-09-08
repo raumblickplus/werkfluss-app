@@ -4,11 +4,17 @@ import { supabase } from './supabaseClient'
 
 export type Firma = { id: string; name: string; rolle: string }
 
+// Ein Bauherr ohne eigene Firma ist über projekt_mitglieder (firma_id = null,
+// nutzer_id = die eigene) mit einem oder mehreren Projekten verknüpft, statt
+// über firma_mitglieder wie alle professionellen Rollen.
+export type BauherrProjekt = { id: string; name: string; adresse: string | null }
+
 type AuthContextValue = {
   session: Session | null
   ladeStatus: 'laedt' | 'bereit'
   firmen: Firma[]
   aktivFirma: Firma | null
+  bauherrProjekte: BauherrProjekt[]
   setAktivFirmaId: (id: string) => void
   ladeFirmen: () => Promise<void>
   signOut: () => Promise<void>
@@ -21,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
   const [firmen, setFirmen] = useState<Firma[]>([])
   const [aktivFirmaId, setAktivFirmaId] = useState<string | null>(null)
+  const [bauherrProjekte, setBauherrProjekte] = useState<BauherrProjekt[]>([])
 
   async function ladeFirmen() {
     const { data, error } = await supabase
@@ -47,6 +54,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Lädt die Projekte, in denen die Person als Bauherr (ohne eigene Firma)
+  // Mitglied ist - unabhängig davon, ob sie daneben auch noch echte Firmen
+  // hat. Explizit auf die eigene nutzer_id gefiltert: die Select-Policy auf
+  // projekt_mitglieder erlaubt allen Projektbeteiligten das Lesen aller
+  // Mitgliederzeilen eines Projekts, sonst würde z.B. ein GU hier fälschlich
+  // die Bauherr-Zeile seines eigenen Kunden zu sehen bekommen.
+  async function ladeBauherrProjekte(nutzerId: string) {
+    const { data, error } = await supabase
+      .from('projekt_mitglieder')
+      .select('projekte(id, name, adresse)')
+      .eq('rolle_im_projekt', 'bauherr')
+      .eq('nutzer_id', nutzerId)
+
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error('Bauherr-Projekte konnten nicht geladen werden:', error.message)
+      return
+    }
+
+    const geladen: BauherrProjekt[] = (data ?? [])
+      .map((eintrag) => eintrag.projekte as unknown as BauherrProjekt | null)
+      .filter((p): p is BauherrProjekt => p !== null)
+
+    setBauherrProjekte(geladen)
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
@@ -63,9 +96,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (session) {
       ladeFirmen()
+      ladeBauherrProjekte(session.user.id)
     } else {
       setFirmen([])
       setAktivFirmaId(null)
+      setBauherrProjekte([])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session])
@@ -78,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, ladeStatus, firmen, aktivFirma, setAktivFirmaId, ladeFirmen, signOut }}
+      value={{ session, ladeStatus, firmen, aktivFirma, bauherrProjekte, setAktivFirmaId, ladeFirmen, signOut }}
     >
       {children}
     </AuthContext.Provider>

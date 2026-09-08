@@ -17,9 +17,10 @@ import Maengel from './pages/Maengel'
 import Tagesbericht from './pages/Tagesbericht'
 import Netzwerk from './pages/Netzwerk'
 import Projektmappe from './pages/Projektmappe'
+import Kundenansicht from './pages/Kundenansicht'
 
 export default function App() {
-  const { session, ladeStatus, firmen } = useAuth()
+  const { session, ladeStatus, firmen, bauherrProjekte } = useAuth()
   const location = useLocation()
 
   // Einladungslinks funktionieren unabhängig vom Anmeldestatus – die Seite
@@ -43,6 +44,12 @@ export default function App() {
   }
 
   if (!session) return <Login />
+  // Eine Person ohne eigene Firma, aber mit mindestens einer Bauherr-
+  // Mitgliedschaft (siehe 0021_bauherr_ohne_firma.sql), ist ein privater
+  // Bauherr - die bekommt die eigene, stark vereinfachte Kundenansicht
+  // statt der vollen Profi-Oberfläche mit allen Modulen. Wer noch gar
+  // nirgends Mitglied ist, landet wie bisher bei "Firma anlegen".
+  if (firmen.length === 0 && bauherrProjekte.length > 0) return <Kundenansicht />
   if (firmen.length === 0) return <FirmaAnlegen />
 
   return (
@@ -51,7 +58,7 @@ export default function App() {
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/projekte/:id" element={<ProjektDetail />} />
       <Route path="/team" element={<Team />} />
-          <Route path="/team-chat" element={<TeamChat />} />
+      <Route path="/team-chat" element={<TeamChat />} />
       <Route path="/zeitplan" element={<Zeitplan />} />
       <Route path="/einstellungen" element={<Einstellungen />} />
       <Route path="/finanzen" element={<Finanzen />} />
