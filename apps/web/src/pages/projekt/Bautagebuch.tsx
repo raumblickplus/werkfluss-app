@@ -16,8 +16,23 @@ type Eintrag = {
   besonderheiten: string | null
   kunde_anwesend: boolean
   gewerke: { name: string } | null
+  fotos: { url: string }[]
   bautagebuch_aufgaben: { titel: string; erledigt: boolean }[]
   bautagebuch_anwesende: { projekt_beteiligte: { name: string } | null }[]
+}
+
+type Einstufung = 'hinweis' | 'empfehlung' | 'moeglicher_mangel'
+type FotoErgebnis = { beobachtungen: { aussage: string; einstufung: Einstufung }[]; zusammenfassung: string }
+
+const einstufungLabel: Record<Einstufung, string> = {
+  hinweis: 'Hinweis',
+  empfehlung: 'Empfehlung',
+  moeglicher_mangel: 'Möglicher Mangel',
+}
+const einstufungFarbe: Record<Einstufung, string> = {
+  hinweis: 'var(--ink-faint)',
+  empfehlung: 'var(--orange-text)',
+  moeglicher_mangel: 'var(--red)',
 }
 
 type Props = {
@@ -47,20 +62,42 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
   const [besonderheiten, setBesonderheiten] = useState('')
   const [wetterStatus, setWetterStatus] = useState<'inaktiv' | 'laedt' | 'gefunden' | 'nicht_gefunden'>('inaktiv')
   const [sendet, setSendet] = useState(false)
+  const [fotoDateien, setFotoDateien] = useState<File[]>([])
+  const [einschaetzungenByFoto, setEinschaetzungenByFoto] = useState<Map<string, FotoErgebnis>>(new Map())
+  const [ladendeFotos, setLadendeFotos] = useState<Set<string>>(new Set())
+  const [einschaetzungFehler, setEinschaetzungFehler] = useState<string | null>(null)
 
   async function laden() {
     setLadeStatus('laedt')
     const { data, error } = await supabase
       .from('bautagebuch_eintraege')
       .select(
-        'id, datum, wetter, temperatur_grad, taetigkeiten, besonderheiten, kunde_anwesend, gewerke(name), bautagebuch_aufgaben(titel, erledigt), bautagebuch_anwesende(projekt_beteiligte(name))'
+        'id, datum, wetter, temperatur_grad, taetigkeiten, besonderheiten, kunde_anwesend, gewerke(name), fotos, bautagebuch_aufgaben(titel, erledigt), bautagebuch_anwesende(projekt_beteiligte(name))'
       )
       .eq('projekt_id', projektId)
       .order('datum', { ascending: false })
       .order('erstellt_am', { ascending: false })
 
     if (error) { setLadeStatus('fehler'); return }
-    setEintraege((data ?? []) as unknown as Eintrag[])
+    const geladeneEintraege = (data ?? []) as unknown as Eintrag[]
+    setEintraege(geladeneEintraege)
+
+    const eintragIds = geladeneEintraege.map((e) => e.id)
+    if (eintragIds.length > 0) {
+      const { data: einschaetzungenData } = await supabase
+        .from('foto_ki_einschaetzungen')
+        .select('bautagebuch_id, foto_url, ergebnis, erstellt_am')
+        .in('bautagebuch_id', eintragIds)
+        .order('erstellt_am', { ascending: false })
+      const neueMap = new Map<string, FotoErgebnis>()
+      for (const e of (einschaetzungenData ?? []) as Array<{ foto_url: string; ergebnis: FotoErgebnis }>) {
+        if (!neueMap.has(e.foto_url)) neueMap.set(e.foto_url, e.ergebnis)
+      }
+      setEinschaetzungenByFoto(neueMap)
+    } else {
+      setEinschaetzungenByFoto(new Map())
+    }
+
     setLadeStatus('bereit')
   }
 
@@ -138,11 +175,27 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
     setAnwesendeIds(new Set()); setKundeAnwesend(false)
     setTaetigkeiten(''); setWetter(''); setTemperatur(''); setBesonderheiten('')
     setWetterStatus('inaktiv')
+    setFotoDateien([])
   }
 
   async function anlegen(e: FormEvent) {
     e.preventDefault()
     setSendet(true)
+
+    const hochgeladeneFotos: { url: string }[] = []
+    for (const datei of fotoDateien) {
+      const endung = datei.name.split('.').pop() || 'jpg'
+      const pfad = `${projektId}/${crypto.randomUUID()}.${endung}`
+      const { error: uploadFehler } = await supabase.storage.from('bautagebuch-fotos').upload(pfad, await datei.arrayBuffer(), {
+        contentType: datei.type || 'application/octet-stream',
+        cacheControl: '3600',
+        upsert: false,
+      })
+      if (!uploadFehler) {
+        hochgeladeneFotos.push({ url: supabase.storage.from('bautagebuch-fotos').getPublicUrl(pfad).data.publicUrl })
+      }
+    }
+
     const { data: { user } } = await supabase.auth.getUser()
 
     const { data: neuerEintrag, error } = await supabase
@@ -156,6 +209,7 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
         wetter: wetter || null,
         temperatur_grad: temperatur ? Number(temperatur) : null,
         besonderheiten: besonderheiten || null,
+        fotos: hochgeladeneFotos,
       })
       .select('id')
       .single()
@@ -184,6 +238,24 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
     setZeigeFormular(false)
     setSendet(false)
     laden()
+  }
+
+  async function einschaetzungAnfordern(bautagebuchId: string, fotoUrl: string) {
+    setEinschaetzungFehler(null)
+    setLadendeFotos((vorherig) => new Set(vorherig).add(fotoUrl))
+    const { data, error } = await supabase.functions.invoke('foto-einschaetzung', {
+      body: { bautagebuchId, fotoUrl },
+    })
+    setLadendeFotos((vorherig) => {
+      const neu = new Set(vorherig)
+      neu.delete(fotoUrl)
+      return neu
+    })
+    if (error || data?.fehler) {
+      setEinschaetzungFehler('KI-Ersteinschätzung konnte nicht abgerufen werden.')
+      return
+    }
+    setEinschaetzungenByFoto((vorherig) => new Map(vorherig).set(fotoUrl, data.ergebnis as FotoErgebnis))
   }
 
   return (
@@ -292,6 +364,16 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
             Besonderheiten (optional)
             <textarea style={{ ...eingabeStil, minHeight: 50, fontFamily: 'inherit' }} value={besonderheiten} onChange={(e) => setBesonderheiten(e.target.value)} />
           </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+            Fotos (optional – dazu lässt sich später eine unverbindliche KI-Ersteinschätzung anfordern)
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              style={eingabeStil}
+              onChange={(e) => setFotoDateien(Array.from(e.target.files ?? []))}
+            />
+          </label>
           <button type="submit" style={knopfStil} disabled={sendet}>{sendet ? 'Speichert …' : 'Eintrag speichern'}</button>
         </form>
       )}
@@ -331,10 +413,63 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
 
               {e.taetigkeiten && <div style={{ fontSize: 14 }}>{e.taetigkeiten}</div>}
               {e.besonderheiten && <div style={{ fontSize: 13, color: 'var(--orange-text)', marginTop: 6 }}>⚠ {e.besonderheiten}</div>}
+
+              {e.fotos.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                  {e.fotos.map((foto) => {
+                    const ergebnis = einschaetzungenByFoto.get(foto.url)
+                    const laedt = ladendeFotos.has(foto.url)
+                    return (
+                      <div key={foto.url} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                          <img
+                            src={foto.url}
+                            alt="Baustellenfoto"
+                            style={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 8, background: 'var(--surface)' }}
+                          />
+                          {!ergebnis && (
+                            <button
+                              type="button"
+                              onClick={() => einschaetzungAnfordern(e.id, foto.url)}
+                              disabled={laedt}
+                              style={{ ...knopfStil, fontSize: 12, padding: '6px 10px', alignSelf: 'center' }}
+                            >
+                              {laedt ? 'Wird analysiert …' : '🤖 KI-Ersteinschätzung anfordern'}
+                            </button>
+                          )}
+                        </div>
+                        {ergebnis && (
+                          <div style={{ ...karteStil, padding: '10px 14px', background: 'rgba(230,150,40,.06)', border: '1px solid rgba(230,150,40,.25)' }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--orange-text)', marginBottom: 6 }}>
+                              ⚠ Unverbindliche KI-Ersteinschätzung – keine Norm-Prüfung, ersetzt keine fachliche Begutachtung vor Ort
+                            </div>
+                            {ergebnis.zusammenfassung && (
+                              <div style={{ fontSize: 13, marginBottom: ergebnis.beobachtungen.length > 0 ? 6 : 0 }}>{ergebnis.zusammenfassung}</div>
+                            )}
+                            {ergebnis.beobachtungen.length > 0 && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                {ergebnis.beobachtungen.map((b, i) => (
+                                  <div key={i} style={{ fontSize: 12.5, display: 'flex', gap: 6 }}>
+                                    <span style={{ color: einstufungFarbe[b.einstufung], fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                      {einstufungLabel[b.einstufung]}:
+                                    </span>
+                                    <span>{b.aussage}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )
         })}
       </div>
+      {einschaetzungFehler && <p style={{ fontSize: 12.5, color: 'var(--red)', marginTop: 12 }}>{einschaetzungFehler}</p>}
     </div>
   )
 }
