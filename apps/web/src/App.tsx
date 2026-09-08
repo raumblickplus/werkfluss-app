@@ -12,6 +12,7 @@ import Team from './pages/Team'
 import Zeitplan from './pages/Zeitplan'
 import Einstellungen from './pages/Einstellungen'
 import Finanzen from './pages/Finanzen'
+import Maengel from './pages/Maengel'
 
 export default function App() {
   const { session, ladeStatus, firmen } = useAuth()
@@ -49,6 +50,7 @@ export default function App() {
       <Route path="/zeitplan" element={<Zeitplan />} />
       <Route path="/einstellungen" element={<Einstellungen />} />
       <Route path="/finanzen" element={<Finanzen />} />
+      <Route path="/maengel" element={<Maengel />} />
       <Route path="/modul/:modulId" element={<ModulPlatzhalter />} />
     </Routes>
   )

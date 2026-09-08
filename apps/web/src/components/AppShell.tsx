@@ -126,6 +126,7 @@ function pfadFuer(id: string) {
   if (id === 'zeitplan') return '/zeitplan'
   if (id === 'finanzen') return '/finanzen'
   if (id === 'buchhaltung') return '/finanzen?tab=buchhaltung'
+  if (id === 'maengel') return '/maengel'
   if (id === 'einstellungen') return '/einstellungen'
   return `/modul/${id}`
 }
@@ -159,6 +160,7 @@ export default function AppShell({
     if (id === 'zeitplan') return location.pathname === '/zeitplan'
     if (id === 'finanzen') return location.pathname === '/finanzen' && location.search !== '?tab=buchhaltung'
     if (id === 'buchhaltung') return location.pathname === '/finanzen' && location.search === '?tab=buchhaltung'
+    if (id === 'maengel') return location.pathname === '/maengel'
     if (id === 'einstellungen') return location.pathname === '/einstellungen'
     return location.pathname === `/modul/${id}`
   }
