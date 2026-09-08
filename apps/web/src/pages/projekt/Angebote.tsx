@@ -64,7 +64,7 @@ function normalisiert(s: string) {
   return s.trim().toLowerCase()
 }
 
-export default function Angebote({ projektId }: { projektId: string }) {
+export default function Angebote({ projektId, istEigentuemer }: { projektId: string; istEigentuemer: boolean }) {
   const { aktivFirma } = useAuth()
   const [angebote, setAngebote] = useState<Angebot[]>([])
   const [auftraege, setAuftraege] = useState<Auftrag[]>([])
@@ -126,18 +126,25 @@ export default function Angebote({ projektId }: { projektId: string }) {
     setLvPositionen((lvData ?? []) as LvPosition[])
     setKatalog((katalogData ?? []) as KatalogPosition[])
 
+    // Nur der Eigentümer (GU) kann ein Angebot im Namen einer anderen,
+    // verknüpften Firma anlegen (z.B. wenn eine Firma noch keinen eigenen
+    // Login hat). Eine teilnehmende Firma darf nur für sich selbst bieten.
     const verknuepfteFirmen = ((mitgliederData ?? []) as unknown as { firmen: Firma | null }[])
       .map((m) => m.firmen)
       .filter((f): f is Firma => Boolean(f))
     const alleFirmen = aktivFirma ? [aktivFirma, ...verknuepfteFirmen] : verknuepfteFirmen
-    const eindeutig = Array.from(new Map(alleFirmen.map((f) => [f.id, f])).values())
+    const eindeutig = istEigentuemer
+      ? Array.from(new Map(alleFirmen.map((f) => [f.id, f])).values())
+      : aktivFirma
+      ? [aktivFirma]
+      : []
     setFirmenOptionen(eindeutig)
     if (!firmaId && eindeutig.length > 0) setFirmaId(eindeutig[0].id)
 
     setLadeStatus('bereit')
   }
 
-  useEffect(() => { laden() }, [projektId, aktivFirma?.id])
+  useEffect(() => { laden() }, [projektId, aktivFirma?.id, istEigentuemer])
 
   const gewerkeMitOffenenLv = useMemo(() => {
     const idsMitOffenen = new Set(lvPositionen.filter((p) => p.gewerk_id).map((p) => p.gewerk_id as string))
@@ -322,9 +329,13 @@ export default function Angebote({ projektId }: { projektId: string }) {
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
             Anbietende Firma
-            <select style={eingabeStil} value={firmaId} onChange={(e) => setFirmaId(e.target.value)} required>
-              {firmenOptionen.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
+            {istEigentuemer ? (
+              <select style={eingabeStil} value={firmaId} onChange={(e) => setFirmaId(e.target.value)} required>
+                {firmenOptionen.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            ) : (
+              <span style={{ fontSize: 13.5, fontWeight: 700 }}>{aktivFirma?.name ?? '–'}</span>
+            )}
           </label>
 
           {erstellModus === 'manuell' ? (
@@ -463,11 +474,13 @@ export default function Angebote({ projektId }: { projektId: string }) {
                     value={a.status}
                     onChange={(e) => statusAendern(a.id, e.target.value as Angebot['status'])}
                   >
-                    {Object.entries(statusLabel).map(([wert, label]) => (
-                      <option key={wert} value={wert}>{label}</option>
-                    ))}
+                    {Object.entries(statusLabel)
+                      .filter(([wert]) => istEigentuemer || wert === 'entwurf' || wert === 'versendet')
+                      .map(([wert, label]) => (
+                        <option key={wert} value={wert}>{label}</option>
+                      ))}
                   </select>
-                  {a.status === 'angenommen' && !angebotHatAuftrag(a.id) && (
+                  {istEigentuemer && a.status === 'angenommen' && !angebotHatAuftrag(a.id) && (
                     <button style={{ ...knopfStil, fontSize: 12, padding: '6px 10px' }} onClick={() => auftragErstellen(a)}>
                       Auftrag erstellen
                     </button>

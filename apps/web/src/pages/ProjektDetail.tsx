@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
+import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
 import Uebersicht, { type ProjektDetails } from './projekt/Uebersicht'
 import Ausschreibung from './projekt/Ausschreibung'
@@ -13,7 +14,7 @@ import Abnahme from './projekt/Abnahme'
 import Rechnungen from './projekt/Rechnungen'
 import { projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
-type Projekt = ProjektDetails & { breitengrad: number | null; laengengrad: number | null }
+type Projekt = ProjektDetails & { firma_id: string; breitengrad: number | null; laengengrad: number | null }
 type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'rechnungen'
 
 const tabs: { key: Tab; label: string }[] = [
@@ -29,9 +30,10 @@ const tabs: { key: Tab; label: string }[] = [
 ]
 
 const PROJEKT_SPALTEN =
-  'id, name, adresse, status, vorhabenart, gebaeudeklasse, kunde_name, kunde_kontakt, kunde_rechnungsadresse, start_datum, end_datum_geplant, breitengrad, laengengrad'
+  'id, firma_id, name, adresse, status, vorhabenart, gebaeudeklasse, kunde_name, kunde_kontakt, kunde_rechnungsadresse, start_datum, end_datum_geplant, breitengrad, laengengrad'
 
 export default function ProjektDetail() {
+  const { aktivFirma } = useAuth()
   const { id } = useParams<{ id: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const [projekt, setProjekt] = useState<Projekt | null>(null)
@@ -41,6 +43,14 @@ export default function ProjektDetail() {
   const [aktivTab, setAktivTab] = useState<Tab>(
     tabAusUrl && tabs.some((t) => t.key === tabAusUrl) ? tabAusUrl : 'uebersicht'
   )
+
+  // Der Eigentümer (GU, projekte.firma_id) sieht/verwaltet alles im Projekt.
+  // Ein eingeladener Teilnehmer (Handwerker, Architekt, Subunternehmer) ist
+  // hier nur Gast und bekommt entsprechend eingeschränkte Rechte (siehe
+  // Migration 0019_projekt_rechte.sql) - die Rechnungen an den Bauherrn
+  // gehen ihn z.B. gar nichts an, deshalb fällt der Tab für ihn ganz weg.
+  const istEigentuemer = !!aktivFirma && projekt?.firma_id === aktivFirma.id
+  const sichtbareTabs = istEigentuemer ? tabs : tabs.filter((t) => t.key !== 'rechnungen')
 
   function tabWechseln(tab: Tab) {
     setAktivTab(tab)
@@ -96,7 +106,7 @@ export default function ProjektDetail() {
       }
     >
       <div className="tabs">
-        {tabs.map((t) => (
+        {sichtbareTabs.map((t) => (
           <button
             key={t.key}
             className={`tab${aktivTab === t.key ? ' active' : ''}`}
@@ -108,9 +118,9 @@ export default function ProjektDetail() {
       </div>
 
       {aktivTab === 'uebersicht' && <Uebersicht projekt={projekt} onAktualisiert={laden} />}
-      {aktivTab === 'ausschreibung' && <Ausschreibung projektId={id} />}
+      {aktivTab === 'ausschreibung' && <Ausschreibung projektId={id} istEigentuemer={istEigentuemer} />}
       {aktivTab === 'kommunikation' && <Kommunikation projektId={id} />}
-      {aktivTab === 'angebote' && <Angebote projektId={id} />}
+      {aktivTab === 'angebote' && <Angebote projektId={id} istEigentuemer={istEigentuemer} />}
       {aktivTab === 'bautagebuch' && (
         <Bautagebuch
           projektId={id}
@@ -125,7 +135,7 @@ export default function ProjektDetail() {
       {aktivTab === 'maengel' && <Maengel projektId={id} />}
       {aktivTab === 'aufgaben' && <Aufgaben projektId={id} />}
       {aktivTab === 'abnahme' && <Abnahme projektId={id} />}
-      {aktivTab === 'rechnungen' && <Rechnungen projektId={id} />}
+      {aktivTab === 'rechnungen' && istEigentuemer && <Rechnungen projektId={id} />}
     </AppShell>
   )
 }

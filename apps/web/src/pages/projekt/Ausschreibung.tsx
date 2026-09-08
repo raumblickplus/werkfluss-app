@@ -25,7 +25,7 @@ function positionsSumme(p: LvPosition) {
   return Math.round((p.menge ?? 1) * p.einzelpreis_cents)
 }
 
-export default function Ausschreibung({ projektId }: { projektId: string }) {
+export default function Ausschreibung({ projektId, istEigentuemer }: { projektId: string; istEigentuemer: boolean }) {
   const [positionen, setPositionen] = useState<LvPosition[]>([])
   const [gewerke, setGewerke] = useState<Gewerk[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
@@ -130,12 +130,14 @@ export default function Ausschreibung({ projektId }: { projektId: string }) {
             ? 'Noch keine Positionen'
             : `${positionen.length} Position${positionen.length === 1 ? '' : 'en'} · geschätzt ${euro.format(summeGesamtCents / 100)} netto`}
         </span>
-        <button style={knopfStil} onClick={() => setZeigeFormular((v) => !v)}>
-          {zeigeFormular ? 'Abbrechen' : '+ Position'}
-        </button>
+        {istEigentuemer && (
+          <button style={knopfStil} onClick={() => setZeigeFormular((v) => !v)}>
+            {zeigeFormular ? 'Abbrechen' : '+ Position'}
+          </button>
+        )}
       </div>
 
-      {zeigeFormular && (
+      {istEigentuemer && zeigeFormular && (
         <form onSubmit={anlegen} style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', flex: '2 1 260px' }}>
@@ -223,22 +225,28 @@ export default function Ausschreibung({ projektId }: { projektId: string }) {
                         {euro.format(summeCents / 100)}
                       </span>
                     )}
-                    <select
-                      style={{ ...pillStil(statusVariante[p.status]), border: 'none', cursor: 'pointer' }}
-                      value={p.status}
-                      onChange={(e) => statusSetzen(p, e.target.value as LvStatus)}
-                    >
-                      <option value="offen">{statusLabel.offen}</option>
-                      <option value="angefragt">{statusLabel.angefragt}</option>
-                      <option value="entfallen">{statusLabel.entfallen}</option>
-                    </select>
-                    <button
-                      onClick={() => loeschen(p)}
-                      title="Entfernen"
-                      style={{ all: 'unset', cursor: 'pointer', fontSize: 13, color: 'var(--ink-faint)', padding: '0 4px' }}
-                    >
-                      ×
-                    </button>
+                    {istEigentuemer ? (
+                      <>
+                        <select
+                          style={{ ...pillStil(statusVariante[p.status]), border: 'none', cursor: 'pointer' }}
+                          value={p.status}
+                          onChange={(e) => statusSetzen(p, e.target.value as LvStatus)}
+                        >
+                          <option value="offen">{statusLabel.offen}</option>
+                          <option value="angefragt">{statusLabel.angefragt}</option>
+                          <option value="entfallen">{statusLabel.entfallen}</option>
+                        </select>
+                        <button
+                          onClick={() => loeschen(p)}
+                          title="Entfernen"
+                          style={{ all: 'unset', cursor: 'pointer', fontSize: 13, color: 'var(--ink-faint)', padding: '0 4px' }}
+                        >
+                          ×
+                        </button>
+                      </>
+                    ) : (
+                      <span style={pillStil(statusVariante[p.status])}>{statusLabel[p.status]}</span>
+                    )}
                   </div>
                 )
               })}
