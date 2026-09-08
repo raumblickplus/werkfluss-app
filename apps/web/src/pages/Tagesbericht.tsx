@@ -129,49 +129,41 @@ export default function Tagesbericht() {
         <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>
       ) : (
         <>
-          <div style={{ ...karteStil, padding: '30px 36px', marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 24 }}>
-            <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-              <div style={{ color: 'var(--orange-deep)', flexShrink: 0, marginTop: 2 }}>
-                <BuchIcon />
-              </div>
-              <div>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 14 }}>
+              <div className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
+                <div className="block-ticks" />
+                <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <BuchIcon groesse={14} />
                   {datumLabel(datum, heuteIso)}
                 </div>
-                <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(22px, 2.4vw, 32px)', fontWeight: 700, margin: '6px 0 0', letterSpacing: '-0.02em' }}>
-                  {heroText.titel}
-                </h1>
-                <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--ink-dim)', maxWidth: 480 }}>{heroText.subtitel}</p>
+                <div className="block-num" style={{ fontSize: 'clamp(34px, 3.6vw, 56px)' }}>{eintraege.length}</div>
+                <div className="block-sub">{heroText.titel}</div>
+              </div>
+              <div className={`block ${projekteOhneBericht.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
+                <div className="block-lbl">Ohne Bericht</div>
+                <div className="block-num" style={{ fontSize: 'clamp(30px, 3.2vw, 48px)' }}>{projekteOhneBericht.length}</div>
+                <div className="block-sub">{heroText.subtitel}</div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap' }}>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                  {eintraege.length}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4 }}>Berichte</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
+              <div className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Berichte</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(eintraege.length)}</div>
               </div>
-              <div style={{ textAlign: 'right', borderLeft: '1px solid var(--glass-border)', paddingLeft: 24 }}>
-                <div
-                  style={{
-                    fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1,
-                    color: projekteOhneBericht.length > 0 ? 'var(--orange-text)' : 'inherit',
-                  }}
-                >
-                  {projekteOhneBericht.length}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4 }}>Ohne Bericht</div>
+              <div className="block olive" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Ohne Bericht</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(projekteOhneBericht.length)}</div>
+              </div>
+              <div className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Neue Mängel</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(maengel.length)}</div>
+              </div>
+              <div className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Davon kritisch</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(kritischeMaengel.length)}</div>
               </div>
             </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
-            <Stat label="Berichte" value={String(eintraege.length)} />
-            <Stat label="Projekte ohne Bericht" value={String(projekteOhneBericht.length)} warnend={projekteOhneBericht.length > 0} />
-            <Stat label="Neue Mängel" value={String(maengel.length)} />
-            <Stat label="Davon kritisch" value={String(kritischeMaengel.length)} warnend={kritischeMaengel.length > 0} />
-          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 20, marginBottom: 24 }}>
             <div style={karteStil}>
@@ -270,14 +262,5 @@ export default function Tagesbericht() {
         </>
       )}
     </AppShell>
-  )
-}
-
-function Stat({ label, value, warnend }: { label: string; value: string; warnend?: boolean }) {
-  return (
-    <div className="stat liquid" style={{ padding: '18px 20px' }}>
-      <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'var(--font-display)', marginTop: 4, color: warnend ? 'var(--red)' : 'inherit' }}>{value}</div>
-    </div>
   )
 }

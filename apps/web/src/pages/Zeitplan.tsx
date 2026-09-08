@@ -160,11 +160,23 @@ export default function Zeitplan() {
         <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
-            <Stat label="Gewerke im Zeitstrahl" value={gewerkeAnzahl} />
-            <Stat label="Überfällige Termine" value={ueberfaellig.length} warnend={ueberfaellig.length > 0} />
-            <Stat label="Nächste 3 Wochen" value={naeher.length} />
-            <Stat label="Projekte ohne Termine" value={projekteOhneTermine.length} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
+            <div className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              <div className="block-lbl">Gewerke im Zeitstrahl</div>
+              <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{gewerkeAnzahl}</div>
+            </div>
+            <div className={`block ${ueberfaellig.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              <div className="block-lbl">Überfällige Termine</div>
+              <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{ueberfaellig.length}</div>
+            </div>
+            <div className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              <div className="block-lbl">Nächste 3 Wochen</div>
+              <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{naeher.length}</div>
+            </div>
+            <div className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              <div className="block-lbl">Projekte ohne Termine</div>
+              <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{projekteOhneTermine.length}</div>
+            </div>
           </div>
 
           <div style={{ ...karteStil, marginBottom: 24, overflowX: 'auto' }}>
@@ -343,15 +355,6 @@ export default function Zeitplan() {
         </>
       )}
     </AppShell>
-  )
-}
-
-function Stat({ label, value, warnend }: { label: string; value: number; warnend?: boolean }) {
-  return (
-    <div className="stat liquid" style={{ padding: '18px 20px' }}>
-      <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
-      <div style={{ fontSize: 30, fontWeight: 700, fontFamily: 'var(--font-display)', marginTop: 4, color: warnend ? 'var(--red)' : 'inherit' }}>{value}</div>
-    </div>
   )
 }
 
