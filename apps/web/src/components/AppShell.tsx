@@ -93,14 +93,19 @@ const navGroups: NavGroup[] = [
     titel: 'Projekt (Baustelle)',
     items: [
       { id: 'projekte', label: 'Projekte', icon: ic.projekte },
-      { id: 'finanzen', label: 'Finanzen', icon: ic.finanzen },
       { id: 'zeitplan', label: 'Zeitplan', icon: ic.zeitplan },
       { id: 'tagesbericht', label: 'Tagesbericht', icon: ic.tagesbericht },
       { id: 'maengel', label: 'Mängel & Abnahme', icon: ic.maengel },
       { id: 'cadbim', label: 'CAD/BIM', icon: ic.cadbim },
     ],
   },
-  { titel: 'Buchhaltung (Unternehmen)', items: [{ id: 'buchhaltung', label: 'Buchhaltung', icon: ic.buchhaltung }] },
+  {
+    titel: 'Finanzen',
+    items: [
+      { id: 'finanzen', label: 'Übersicht', icon: ic.finanzen },
+      { id: 'buchhaltung', label: 'Buchhaltung', icon: ic.buchhaltung },
+    ],
+  },
   {
     titel: 'Zusammenarbeit',
     items: [
@@ -120,6 +125,7 @@ function pfadFuer(id: string) {
   if (id === 'team') return '/team'
   if (id === 'zeitplan') return '/zeitplan'
   if (id === 'finanzen') return '/finanzen'
+  if (id === 'buchhaltung') return '/finanzen?tab=buchhaltung'
   if (id === 'einstellungen') return '/einstellungen'
   return `/modul/${id}`
 }
@@ -151,7 +157,8 @@ export default function AppShell({
     if (id === 'dashboard') return location.pathname === '/dashboard'
     if (id === 'team') return location.pathname === '/team'
     if (id === 'zeitplan') return location.pathname === '/zeitplan'
-    if (id === 'finanzen') return location.pathname === '/finanzen'
+    if (id === 'finanzen') return location.pathname === '/finanzen' && location.search !== '?tab=buchhaltung'
+    if (id === 'buchhaltung') return location.pathname === '/finanzen' && location.search === '?tab=buchhaltung'
     if (id === 'einstellungen') return location.pathname === '/einstellungen'
     return location.pathname === `/modul/${id}`
   }
