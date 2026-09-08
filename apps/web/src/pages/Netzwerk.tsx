@@ -86,7 +86,8 @@ export default function Netzwerk() {
       if (logoDatei) {
         const endung = logoDatei.name.split('.').pop() || 'png'
         const pfad = `${aktivFirma.id}/${crypto.randomUUID()}.${endung}`
-        const { error: uploadFehler } = await supabase.storage.from('logos').upload(pfad, logoDatei, {
+        const { error: uploadFehler } = await supabase.storage.from('logos').upload(pfad, await logoDatei.arrayBuffer(), {
+          contentType: logoDatei.type || 'application/octet-stream',
           cacheControl: '3600',
           upsert: false,
         })

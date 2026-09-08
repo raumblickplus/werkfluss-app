@@ -110,7 +110,8 @@ export default function Projektmappe() {
       if (bilddatei) {
         const endung = bilddatei.name.split('.').pop() || 'jpg'
         const pfad = `${aktivesProjektId}/${crypto.randomUUID()}.${endung}`
-        const { error: uploadFehler } = await supabase.storage.from('materialmuster').upload(pfad, bilddatei, {
+        const { error: uploadFehler } = await supabase.storage.from('materialmuster').upload(pfad, await bilddatei.arrayBuffer(), {
+          contentType: bilddatei.type || 'application/octet-stream',
           cacheControl: '3600',
           upsert: false,
         })

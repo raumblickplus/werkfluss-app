@@ -78,7 +78,8 @@ export default function Projekte() {
     if (neuesFoto) {
       const endung = neuesFoto.name.split('.').pop() || 'jpg'
       const pfad = `${aktivFirma.id}/${crypto.randomUUID()}.${endung}`
-      const { error: uploadFehler } = await supabase.storage.from('projektfotos').upload(pfad, neuesFoto, {
+      const { error: uploadFehler } = await supabase.storage.from('projektfotos').upload(pfad, await neuesFoto.arrayBuffer(), {
+        contentType: neuesFoto.type || 'application/octet-stream',
         cacheControl: '3600',
         upsert: false,
       })
