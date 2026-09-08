@@ -24,6 +24,19 @@ const dringlichkeitFarbe: Record<Mangel['dringlichkeit'], string> = {
   gering: 'var(--ink-faint)',
 }
 
+type OffenesAngebot = { id: string; projekt_id: string; gewerk: string | null; summe_netto_cents: number; firmen: { name: string } | { name: string }[] | null }
+type FaelligeAufgabe = { id: string; projekt_id: string; titel: string; faellig_am: string }
+type FristMangel = { id: string; projekt_id: string; titel: string; frist: string; dringlichkeit: Mangel['dringlichkeit'] }
+type KiHinweis = {
+  id: string
+  gewerk: string | null
+  erstellt_am: string
+  ergebnis: { beobachtungen: { aussage: string; einstufung: string }[] }
+  bautagebuch_eintraege: { projekt_id: string } | { projekt_id: string }[] | null
+}
+
+const euro = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
+
 function alsIsoDatum(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -60,6 +73,12 @@ export default function Tagesbericht() {
   const [maengel, setMaengel] = useState<Mangel[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
 
+  const [offeneAngebote, setOffeneAngebote] = useState<OffenesAngebot[]>([])
+  const [faelligeAufgaben, setFaelligeAufgaben] = useState<FaelligeAufgabe[]>([])
+  const [fristMaengel, setFristMaengel] = useState<FristMangel[]>([])
+  const [kiHinweise, setKiHinweise] = useState<KiHinweis[]>([])
+  const [aufmerksamkeitStatus, setAufmerksamkeitStatus] = useState<'laedt' | 'bereit'>('laedt')
+
   async function laden() {
     setLadeStatus('laedt')
     const naechsterTag = alsIsoDatum(addTage(parseIso(datum), 1))
@@ -83,6 +102,45 @@ export default function Tagesbericht() {
   }
 
   useEffect(() => { laden() }, [datum])
+
+  // Gebündelte "Braucht Aufmerksamkeit"-Übersicht (Konzept Abschnitt 8.17,
+  // Informationsflut-Management): offene Freigaben, fällige Aufgaben, Mängel
+  // mit naher Frist und KI-Hinweise aus der Fotoerkennung an einem Ort,
+  // statt verstreut über die einzelnen Projekt-Tabs. Unabhängig vom oben
+  // gewählten Tag, da das der aktuelle Stand ist, nicht ein Tagesrückblick.
+  useEffect(() => {
+    async function aufmerksamkeitLaden() {
+      setAufmerksamkeitStatus('laedt')
+      const in3TagenIso = alsIsoDatum(addTage(new Date(), 3))
+      const [{ data: angeboteData }, { data: aufgabenData }, { data: maengelFristData }, { data: kiData }] = await Promise.all([
+        supabase.from('angebote').select('id, projekt_id, gewerk, summe_netto_cents, firmen(name)').eq('status', 'versendet'),
+        supabase
+          .from('aufgaben')
+          .select('id, projekt_id, titel, faellig_am')
+          .lte('faellig_am', heuteIso)
+          .not('faellig_am', 'is', null)
+          .neq('status', 'erledigt'),
+        supabase
+          .from('maengel')
+          .select('id, projekt_id, titel, frist, dringlichkeit')
+          .lte('frist', in3TagenIso)
+          .not('frist', 'is', null)
+          .not('status', 'in', '(behoben,abgenommen)'),
+        supabase
+          .from('foto_ki_einschaetzungen')
+          .select('id, gewerk, erstellt_am, ergebnis, bautagebuch_eintraege(projekt_id)')
+          .order('erstellt_am', { ascending: false })
+          .limit(30),
+      ])
+      setOffeneAngebote((angeboteData ?? []) as unknown as OffenesAngebot[])
+      setFaelligeAufgaben((aufgabenData ?? []) as FaelligeAufgabe[])
+      setFristMaengel((maengelFristData ?? []) as FristMangel[])
+      const alleKiHinweise = (kiData ?? []) as unknown as KiHinweis[]
+      setKiHinweise(alleKiHinweise.filter((k) => k.ergebnis?.beobachtungen?.some((b) => b.einstufung === 'moeglicher_mangel')).slice(0, 8))
+      setAufmerksamkeitStatus('bereit')
+    }
+    aufmerksamkeitLaden()
+  }, [heuteIso])
 
   const projektName = (id: string) => projekte.find((p) => p.id === id)?.name ?? 'Unbekanntes Projekt'
   const istHeute = datum === heuteIso
@@ -123,6 +181,105 @@ export default function Tagesbericht() {
         />
         <button style={knopfSekundaerStil} disabled={istHeute} onClick={() => setDatum((d) => alsIsoDatum(addTage(parseIso(d), 1)))}>Nächster Tag ›</button>
         {!istHeute && <button style={knopfSekundaerStil} onClick={() => setDatum(heuteIso)}>Heute</button>}
+      </div>
+
+      <div style={{ ...karteStil, marginBottom: 20 }}>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 4px' }}>Braucht Aufmerksamkeit</h2>
+        <p style={{ margin: '0 0 14px', fontSize: 12, color: 'var(--ink-faint)' }}>
+          Gebündelt statt einzeln über alle Projekte verteilt – aktueller Stand, unabhängig vom oben gewählten Tag.
+        </p>
+        {aufmerksamkeitStatus === 'laedt' ? (
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Lädt …</p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-faint)', marginBottom: 8 }}>
+                Offene Freigaben ({offeneAngebote.length})
+              </div>
+              {offeneAngebote.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-faint)' }}>Keine versendeten Angebote warten auf Entscheidung.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {offeneAngebote.map((a) => {
+                    const firma = Array.isArray(a.firmen) ? a.firmen[0]?.name : a.firmen?.name
+                    return (
+                      <Link key={a.id} to={`/projekte/${a.projekt_id}?tab=angebote`} style={{ display: 'block', padding: '8px 10px', borderRadius: 13, background: 'rgba(255,255,255,.4)', border: '1px solid var(--glass-border)', textDecoration: 'none', color: 'var(--ink)' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600 }}>{projektName(a.projekt_id)}{a.gewerk ? ` · ${a.gewerk}` : ''}</div>
+                        <div style={{ fontSize: 11, color: 'var(--ink-faint)' }}>{firma ?? 'Unbekannte Firma'} · {euro.format(a.summe_netto_cents / 100)} netto</div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-faint)', marginBottom: 8 }}>
+                Fällige Aufgaben ({faelligeAufgaben.length})
+              </div>
+              {faelligeAufgaben.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-faint)' }}>Keine überfälligen oder heute fälligen Aufgaben.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {faelligeAufgaben.map((a) => (
+                    <Link key={a.id} to={`/projekte/${a.projekt_id}?tab=aufgaben`} style={{ display: 'block', padding: '8px 10px', borderRadius: 13, background: 'rgba(255,255,255,.4)', border: '1px solid var(--glass-border)', textDecoration: 'none', color: 'var(--ink)' }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600 }}>{a.titel}</div>
+                      <div style={{ fontSize: 11, color: a.faellig_am < heuteIso ? 'var(--red)' : 'var(--ink-faint)' }}>
+                        {projektName(a.projekt_id)} · fällig {new Date(a.faellig_am).toLocaleDateString('de-DE')}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-faint)', marginBottom: 8 }}>
+                Mängel mit naher Frist ({fristMaengel.length})
+              </div>
+              {fristMaengel.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-faint)' }}>Keine Mängel mit Frist in den nächsten 3 Tagen.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {fristMaengel.map((m) => (
+                    <Link key={m.id} to={`/projekte/${m.projekt_id}?tab=maengel`} style={{ display: 'block', padding: '8px 10px', borderRadius: 13, background: 'rgba(255,255,255,.4)', border: '1px solid var(--glass-border)', textDecoration: 'none', color: 'var(--ink)' }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600 }}>{m.titel}</div>
+                      <div style={{ fontSize: 11, color: m.frist < heuteIso ? 'var(--red)' : 'var(--ink-faint)' }}>
+                        {projektName(m.projekt_id)} · Frist {new Date(m.frist).toLocaleDateString('de-DE')}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-faint)', marginBottom: 8 }}>
+                KI-Hinweise aus Fotos ({kiHinweise.length})
+              </div>
+              {kiHinweise.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-faint)' }}>Keine offenen KI-Hinweise auf mögliche Mängel.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {kiHinweise.map((k) => {
+                    const btEintrag = Array.isArray(k.bautagebuch_eintraege) ? k.bautagebuch_eintraege[0] : k.bautagebuch_eintraege
+                    const beobachtung = k.ergebnis.beobachtungen.find((b) => b.einstufung === 'moeglicher_mangel')
+                    if (!btEintrag) return null
+                    return (
+                      <Link key={k.id} to={`/projekte/${btEintrag.projekt_id}?tab=bautagebuch`} style={{ display: 'block', padding: '8px 10px', borderRadius: 13, background: 'rgba(255,255,255,.4)', border: '1px solid var(--glass-border)', textDecoration: 'none', color: 'var(--ink)' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600 }}>{projektName(btEintrag.projekt_id)}{k.gewerk ? ` · ${k.gewerk}` : ''}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-dim)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                          {beobachtung?.aussage}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 2 }}>Unverbindliche KI-Ersteinschätzung</div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {ladeStatus === 'laedt' ? (
