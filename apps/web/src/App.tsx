@@ -11,6 +11,7 @@ import FirmaEinladungAnnehmen from './pages/FirmaEinladungAnnehmen'
 import Team from './pages/Team'
 import Zeitplan from './pages/Zeitplan'
 import Einstellungen from './pages/Einstellungen'
+import Finanzen from './pages/Finanzen'
 
 export default function App() {
   const { session, ladeStatus, firmen } = useAuth()
@@ -47,6 +48,7 @@ export default function App() {
       <Route path="/team" element={<Team />} />
       <Route path="/zeitplan" element={<Zeitplan />} />
       <Route path="/einstellungen" element={<Einstellungen />} />
+      <Route path="/finanzen" element={<Finanzen />} />
       <Route path="/modul/:modulId" element={<ModulPlatzhalter />} />
     </Routes>
   )

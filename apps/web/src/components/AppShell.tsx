@@ -119,6 +119,7 @@ function pfadFuer(id: string) {
   if (id === 'dashboard') return '/dashboard'
   if (id === 'team') return '/team'
   if (id === 'zeitplan') return '/zeitplan'
+  if (id === 'finanzen') return '/finanzen'
   if (id === 'einstellungen') return '/einstellungen'
   return `/modul/${id}`
 }
@@ -150,6 +151,7 @@ export default function AppShell({
     if (id === 'dashboard') return location.pathname === '/dashboard'
     if (id === 'team') return location.pathname === '/team'
     if (id === 'zeitplan') return location.pathname === '/zeitplan'
+    if (id === 'finanzen') return location.pathname === '/finanzen'
     if (id === 'einstellungen') return location.pathname === '/einstellungen'
     return location.pathname === `/modul/${id}`
   }
