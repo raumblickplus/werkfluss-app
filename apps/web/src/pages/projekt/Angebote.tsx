@@ -251,12 +251,38 @@ export default function Angebote({ projektId }: { projektId: string }) {
 
   async function auftragErstellen(angebot: Angebot) {
     if (!angebot.firmen) return
-    await supabase.from('auftraege').insert({
+    const { error } = await supabase.from('auftraege').insert({
       projekt_id: projektId,
       angebot_id: angebot.id,
       auftragnehmer_firma_id: angebot.firmen.id,
       summe_netto_cents: angebot.summe_netto_cents,
     })
+
+    // Automatische To-do-Liste aus der Ausschreibung (Konzept Abschnitt 16,
+    // Phase 2): wurde das Angebot aus dem Leistungsverzeichnis erstellt,
+    // liegen dazu Angebotspositionen vor - jede wird direkt als Aufgabe
+    // übernommen, statt dass die ausführende Firma die Liste von Hand
+    // nachbaut. Manuell erstellte Angebote haben keine Positionen und
+    // erzeugen bewusst keine Aufgaben, da es dafür keine strukturierte
+    // Grundlage gibt.
+    if (!error) {
+      const { data: positionenData } = await supabase
+        .from('angebot_positionen')
+        .select('kurztext, menge, einheit')
+        .eq('angebot_id', angebot.id)
+
+      if (positionenData && positionenData.length > 0) {
+        await supabase.from('aufgaben').insert(
+          positionenData.map((p) => ({
+            projekt_id: projektId,
+            titel: p.kurztext,
+            beschreibung: `${p.menge}${p.einheit ? ' ' + p.einheit : ''} · automatisch aus dem Angebot übernommen`,
+            gewerk: angebot.gewerk,
+          }))
+        )
+      }
+    }
+
     laden()
   }
 
