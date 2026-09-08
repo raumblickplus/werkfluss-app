@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
 import { karteStil, eingabeStil, knopfStil, knopfSekundaerStil, pillStil } from './stil'
 import Firmenprofil from './Firmenprofil'
+import Preiskatalog from './Preiskatalog'
 
 type Gewerk = { id: string; name: string; sortierung: number; firma_id: string | null }
 type Typ = 'mitarbeiter' | 'firma'
@@ -35,7 +36,7 @@ export default function Netzwerk() {
   const [gewerke, setGewerke] = useState<Gewerk[]>([])
   const [kontakte, setKontakte] = useState<Kontakt[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
-  const [ansicht, setAnsicht] = useState<'kontakte' | 'profil'>('kontakte')
+  const [ansicht, setAnsicht] = useState<'kontakte' | 'profil' | 'preiskatalog'>('kontakte')
 
   const [formOffen, setFormOffen] = useState(false)
   const [name, setName] = useState('')
@@ -185,6 +186,13 @@ export default function Netzwerk() {
             >
               Mein Profil
             </button>
+            <button
+              type="button"
+              onClick={() => setAnsicht('preiskatalog')}
+              style={ansicht === 'preiskatalog' ? knopfSekundaerStil : { ...knopfSekundaerStil, opacity: 0.55 }}
+            >
+              Preiskatalog
+            </button>
           </div>
           {ansicht === 'kontakte' && (
             <button style={knopfStil} onClick={() => setFormOffen((v) => !v)}>
@@ -195,6 +203,7 @@ export default function Netzwerk() {
       }
     >
       {ansicht === 'profil' && <Firmenprofil />}
+      {ansicht === 'preiskatalog' && <Preiskatalog />}
       {ansicht === 'kontakte' && (
         <>
       {formOffen && (

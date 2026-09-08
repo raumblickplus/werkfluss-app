@@ -1,7 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
-import { eingabeStil, knopfStil, karteStil } from '../stil'
+import { eingabeStil, knopfStil, knopfSekundaerStil, karteStil } from '../stil'
 
 type Firma = { id: string; name: string }
 type Gewerk = { id: string; name: string }
@@ -26,6 +26,21 @@ type Auftrag = {
   firmen: Firma | null
 }
 
+type LvStatus = 'offen' | 'angefragt' | 'entfallen'
+type LvPosition = {
+  id: string
+  gewerk_id: string | null
+  kurztext: string
+  menge: number | null
+  einheit: string | null
+  einzelpreis_cents: number | null
+  status: LvStatus
+}
+
+type KatalogPosition = { gewerk_id: string | null; kurztext: string; einzelpreis_cents: number }
+
+type LvZeile = { lvPositionId: string; kurztext: string; menge: number; einheit: string | null; einzelpreisEuro: string }
+
 const statusLabel: Record<Angebot['status'], string> = {
   entwurf: 'Entwurf',
   versendet: 'Versendet',
@@ -45,20 +60,32 @@ function centsZuEuroText(cents: number) {
   return euro.format(cents / 100)
 }
 
+function normalisiert(s: string) {
+  return s.trim().toLowerCase()
+}
+
 export default function Angebote({ projektId }: { projektId: string }) {
   const { aktivFirma } = useAuth()
   const [angebote, setAngebote] = useState<Angebot[]>([])
   const [auftraege, setAuftraege] = useState<Auftrag[]>([])
   const [firmenOptionen, setFirmenOptionen] = useState<Firma[]>([])
   const [gewerke, setGewerke] = useState<Gewerk[]>([])
+  const [lvPositionen, setLvPositionen] = useState<LvPosition[]>([])
+  const [katalog, setKatalog] = useState<KatalogPosition[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
   const [zeigeFormular, setZeigeFormular] = useState(false)
+  const [erstellModus, setErstellModus] = useState<'manuell' | 'aus_lv'>('manuell')
 
   const [firmaId, setFirmaId] = useState('')
   const [gewerk, setGewerk] = useState('')
   const [summeEuro, setSummeEuro] = useState('')
   const [mwstSatz, setMwstSatz] = useState('19')
   const [gueltigBis, setGueltigBis] = useState('')
+
+  const [lvGewerkId, setLvGewerkId] = useState('')
+  const [lvZeilen, setLvZeilen] = useState<LvZeile[]>([])
+  const [lvSpeichert, setLvSpeichert] = useState(false)
+  const [lvFehler, setLvFehler] = useState<string | null>(null)
 
   async function laden() {
     setLadeStatus('laedt')
@@ -67,6 +94,8 @@ export default function Angebote({ projektId }: { projektId: string }) {
       { data: auftraegeData },
       { data: mitgliederData },
       { data: gewerkeData },
+      { data: lvData },
+      { data: katalogData },
     ] = await Promise.all([
       supabase
         .from('angebote')
@@ -80,12 +109,22 @@ export default function Angebote({ projektId }: { projektId: string }) {
         .order('erstellt_am', { ascending: false }),
       supabase.from('projekt_mitglieder').select('firmen(id, name)').eq('projekt_id', projektId),
       supabase.from('gewerke').select('id, name').order('sortierung'),
+      supabase
+        .from('lv_positionen')
+        .select('id, gewerk_id, kurztext, menge, einheit, einzelpreis_cents, status')
+        .eq('projekt_id', projektId)
+        .eq('status', 'offen'),
+      aktivFirma
+        ? supabase.from('preiskatalog_positionen').select('gewerk_id, kurztext, einzelpreis_cents').eq('firma_id', aktivFirma.id)
+        : Promise.resolve({ data: [] as KatalogPosition[] }),
     ])
 
     if (angeboteFehler) { setLadeStatus('fehler'); return }
     setAngebote((angeboteData ?? []) as unknown as Angebot[])
     setAuftraege((auftraegeData ?? []) as unknown as Auftrag[])
     setGewerke(gewerkeData ?? [])
+    setLvPositionen((lvData ?? []) as LvPosition[])
+    setKatalog((katalogData ?? []) as KatalogPosition[])
 
     const verknuepfteFirmen = ((mitgliederData ?? []) as unknown as { firmen: Firma | null }[])
       .map((m) => m.firmen)
@@ -99,6 +138,42 @@ export default function Angebote({ projektId }: { projektId: string }) {
   }
 
   useEffect(() => { laden() }, [projektId, aktivFirma?.id])
+
+  const gewerkeMitOffenenLv = useMemo(() => {
+    const idsMitOffenen = new Set(lvPositionen.filter((p) => p.gewerk_id).map((p) => p.gewerk_id as string))
+    return gewerke.filter((g) => idsMitOffenen.has(g.id))
+  }, [lvPositionen, gewerke])
+
+  useEffect(() => {
+    if (!lvGewerkId) { setLvZeilen([]); return }
+    const offene = lvPositionen.filter((p) => p.gewerk_id === lvGewerkId)
+    const katalogByText = new Map(
+      katalog.filter((k) => k.gewerk_id === lvGewerkId || k.gewerk_id === null).map((k) => [normalisiert(k.kurztext), k.einzelpreis_cents])
+    )
+    setLvZeilen(
+      offene.map((p) => {
+        const treffer = katalogByText.get(normalisiert(p.kurztext))
+        const preisCents = treffer ?? p.einzelpreis_cents ?? null
+        return {
+          lvPositionId: p.id,
+          kurztext: p.kurztext,
+          menge: p.menge ?? 1,
+          einheit: p.einheit,
+          einzelpreisEuro: preisCents != null ? (preisCents / 100).toFixed(2).replace('.', ',') : '',
+        }
+      })
+    )
+  }, [lvGewerkId, lvPositionen, katalog])
+
+  function lvZeilePreisAendern(index: number, wert: string) {
+    setLvZeilen((zeilen) => zeilen.map((z, i) => (i === index ? { ...z, einzelpreisEuro: wert } : z)))
+  }
+
+  const lvZeilenMitPreis = lvZeilen
+    .map((z) => ({ ...z, preis: parseFloat(z.einzelpreisEuro.replace(',', '.')) }))
+    .filter((z) => !Number.isNaN(z.preis))
+  const lvSummeCents = lvZeilenMitPreis.reduce((summe, z) => summe + Math.round(z.menge * z.preis * 100), 0)
+  const lvAnzahlOhnePreis = lvZeilen.length - lvZeilenMitPreis.length
 
   async function anlegen(e: FormEvent) {
     e.preventDefault()
@@ -119,6 +194,54 @@ export default function Angebote({ projektId }: { projektId: string }) {
       setZeigeFormular(false)
       laden()
     }
+  }
+
+  async function ausLvAnlegen(e: FormEvent) {
+    e.preventDefault()
+    if (!firmaId || lvZeilenMitPreis.length === 0) {
+      setLvFehler('Bitte mindestens für eine Position einen Preis angeben.')
+      return
+    }
+    setLvSpeichert(true)
+    setLvFehler(null)
+    const gewerkName = gewerke.find((g) => g.id === lvGewerkId)?.name ?? null
+
+    const { data: neuesAngebot, error } = await supabase
+      .from('angebote')
+      .insert({
+        projekt_id: projektId,
+        anbietende_firma_id: firmaId,
+        gewerk: gewerkName,
+        summe_netto_cents: lvSummeCents,
+        mwst_satz: parseFloat(mwstSatz),
+        gueltig_bis: gueltigBis || null,
+      })
+      .select('id')
+      .single()
+
+    if (error || !neuesAngebot) {
+      setLvFehler('Konnte nicht gespeichert werden.')
+      setLvSpeichert(false)
+      return
+    }
+
+    await supabase.from('angebot_positionen').insert(
+      lvZeilenMitPreis.map((z) => ({
+        angebot_id: neuesAngebot.id,
+        lv_position_id: z.lvPositionId,
+        kurztext: z.kurztext,
+        menge: z.menge,
+        einheit: z.einheit,
+        einzelpreis_cents: Math.round(z.preis * 100),
+      }))
+    )
+
+    setLvGewerkId('')
+    setLvZeilen([])
+    setGueltigBis('')
+    setZeigeFormular(false)
+    setLvSpeichert(false)
+    laden()
   }
 
   async function statusAendern(id: string, status: Angebot['status']) {
@@ -153,40 +276,136 @@ export default function Angebote({ projektId }: { projektId: string }) {
       </div>
 
       {zeigeFormular && (
-        <form onSubmit={anlegen} style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => setErstellModus('manuell')}
+              style={erstellModus === 'manuell' ? knopfStil : knopfSekundaerStil}
+            >
+              Manuell
+            </button>
+            <button
+              type="button"
+              onClick={() => setErstellModus('aus_lv')}
+              style={erstellModus === 'aus_lv' ? knopfStil : knopfSekundaerStil}
+            >
+              Aus Leistungsverzeichnis
+            </button>
+          </div>
+
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
             Anbietende Firma
             <select style={eingabeStil} value={firmaId} onChange={(e) => setFirmaId(e.target.value)} required>
               {firmenOptionen.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
-            Gewerk (optional)
-            <select style={eingabeStil} value={gewerk} onChange={(e) => setGewerk(e.target.value)}>
-              <option value="">– keins –</option>
-              {gewerke.map((g) => <option key={g.id} value={g.name}>{g.name}</option>)}
-            </select>
-          </label>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', flex: 1 }}>
-              Summe netto (€)
-              <input style={eingabeStil} value={summeEuro} onChange={(e) => setSummeEuro(e.target.value)} required placeholder="z.B. 4500" />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', width: 110 }}>
-              MwSt.
-              <select style={eingabeStil} value={mwstSatz} onChange={(e) => setMwstSatz(e.target.value)}>
-                <option value="19">19 %</option>
-                <option value="7">7 %</option>
-                <option value="0">0 %</option>
-              </select>
-            </label>
-          </div>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
-            Gültig bis (optional)
-            <input type="date" style={eingabeStil} value={gueltigBis} onChange={(e) => setGueltigBis(e.target.value)} />
-          </label>
-          <button type="submit" style={knopfStil}>Angebot speichern</button>
-        </form>
+
+          {erstellModus === 'manuell' ? (
+            <form onSubmit={anlegen} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+                Gewerk (optional)
+                <select style={eingabeStil} value={gewerk} onChange={(e) => setGewerk(e.target.value)}>
+                  <option value="">– keins –</option>
+                  {gewerke.map((g) => <option key={g.id} value={g.name}>{g.name}</option>)}
+                </select>
+              </label>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', flex: 1 }}>
+                  Summe netto (€)
+                  <input style={eingabeStil} value={summeEuro} onChange={(e) => setSummeEuro(e.target.value)} required placeholder="z.B. 4500" />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', width: 110 }}>
+                  MwSt.
+                  <select style={eingabeStil} value={mwstSatz} onChange={(e) => setMwstSatz(e.target.value)}>
+                    <option value="19">19 %</option>
+                    <option value="7">7 %</option>
+                    <option value="0">0 %</option>
+                  </select>
+                </label>
+              </div>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+                Gültig bis (optional)
+                <input type="date" style={eingabeStil} value={gueltigBis} onChange={(e) => setGueltigBis(e.target.value)} />
+              </label>
+              <button type="submit" style={knopfStil}>Angebot speichern</button>
+            </form>
+          ) : (
+            <form onSubmit={ausLvAnlegen} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+                Gewerk
+                <select style={eingabeStil} value={lvGewerkId} onChange={(e) => setLvGewerkId(e.target.value)} required>
+                  <option value="">– wählen –</option>
+                  {gewerkeMitOffenenLv.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </label>
+
+              {gewerkeMitOffenenLv.length === 0 && (
+                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-faint)' }}>
+                  Keine offenen Leistungsverzeichnis-Positionen mit Gewerk in diesem Projekt – lege sie im Tab
+                  „Ausschreibung & LV" an.
+                </p>
+              )}
+
+              {lvGewerkId && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {lvZeilen.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-faint)' }}>Keine offenen Positionen für dieses Gewerk.</p>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-faint)' }}>
+                        Positionen aus dem Leistungsverzeichnis – Preise ggf. anpassen
+                      </div>
+                      {lvZeilen.map((z, i) => (
+                        <div key={z.lvPositionId} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <span style={{ flex: '2 1 200px', fontSize: 12.5 }}>{z.kurztext}</span>
+                          <span style={{ flex: '0 0 90px', fontSize: 12, color: 'var(--ink-faint)' }}>
+                            {z.menge} {z.einheit ?? ''}
+                          </span>
+                          <input
+                            style={{ ...eingabeStil, width: 100 }}
+                            value={z.einzelpreisEuro}
+                            onChange={(e) => lvZeilePreisAendern(i, e.target.value)}
+                            placeholder="€ / Einheit"
+                          />
+                        </div>
+                      ))}
+                      <div style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', marginTop: 4 }}>
+                        Summe: {euro.format(lvSummeCents / 100)} netto
+                      </div>
+                      {lvAnzahlOhnePreis > 0 && (
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-faint)', textAlign: 'right' }}>
+                          {lvAnzahlOhnePreis} Position{lvAnzahlOhnePreis === 1 ? '' : 'en'} ohne Preis wird nicht übernommen
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 12 }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', width: 110 }}>
+                  MwSt.
+                  <select style={eingabeStil} value={mwstSatz} onChange={(e) => setMwstSatz(e.target.value)}>
+                    <option value="19">19 %</option>
+                    <option value="7">7 %</option>
+                    <option value="0">0 %</option>
+                  </select>
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', flex: 1 }}>
+                  Gültig bis (optional)
+                  <input type="date" style={eingabeStil} value={gueltigBis} onChange={(e) => setGueltigBis(e.target.value)} />
+                </label>
+              </div>
+
+              {lvFehler && <p style={{ margin: 0, fontSize: 12.5, color: 'var(--red)' }}>{lvFehler}</p>}
+
+              <button type="submit" style={knopfStil} disabled={lvSpeichert || lvZeilenMitPreis.length === 0}>
+                {lvSpeichert ? 'Speichert …' : 'Angebot aus Leistungsverzeichnis erstellen'}
+              </button>
+            </form>
+          )}
+        </div>
       )}
 
       {ladeStatus === 'laedt' && <p style={{ color: 'var(--ink-faint)' }}>Lade Angebote …</p>}
