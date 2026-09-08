@@ -1,7 +1,6 @@
-// Marken-Baustein aus dem Design-Prototyp (app.html): ein Quadrat mit
-// Farbverlauf und "W", optional mit dem Schriftzug "Werkfluss" daneben.
-// Ersetzt das frühere Wellen-Logo, damit die echte App genau wie der
-// abgestimmte Klick-Prototyp aussieht.
+// Marken-Baustein: das ursprüngliche Wellen-Logo (helles Kärtchen mit
+// oranger Welle), einheitlich auf allen Bildschirmen inkl. Sidebar –
+// optional mit dem Schriftzug "Werkfluss" daneben.
 export default function Marke({ mitWort = false, groesse = 36 }: { mitWort?: boolean; groesse?: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -9,23 +8,29 @@ export default function Marke({ mitWort = false, groesse = 36 }: { mitWort?: boo
         style={{
           width: groesse,
           height: groesse,
-          borderRadius: groesse * 0.33,
-          background: 'linear-gradient(155deg, var(--olive-light), var(--olive))',
+          borderRadius: groesse * 0.28,
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontFamily: 'var(--font-display)',
-          fontWeight: 800,
-          fontSize: groesse * 0.44,
-          color: 'oklch(97% 0.01 90)',
-          boxShadow: '0 4px 12px rgba(0,0,0,.3)',
+          boxShadow: '0 8px 20px rgba(20,14,6,.28)',
           flexShrink: 0,
         }}
       >
-        W
+        <svg width={groesse * 0.53} height={groesse * 0.14} viewBox="0 0 360 90">
+          <path
+            d="M20 60 L45 30 L70 60 L95 30 Q140 15 175 45 Q210 75 250 45 Q285 20 330 45"
+            fill="none"
+            stroke="oklch(62% 0.17 52)"
+            strokeWidth="14"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </div>
       {mitWort && (
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: groesse * 0.47 }}>Werkfluss</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: groesse * 0.47, color: 'var(--ink)' }}>Werkfluss</span>
       )}
     </div>
   )
