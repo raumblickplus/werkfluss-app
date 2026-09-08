@@ -140,49 +140,44 @@ export default function Maengel() {
         <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>
       ) : (
         <>
-          <div style={{ ...karteStil, padding: '30px 36px', marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 24 }}>
-            <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-              <div style={{ color: kritischeMaengel.length > 0 ? 'var(--red)' : 'var(--orange-deep)', flexShrink: 0, marginTop: 2 }}>
-                <WarnIcon />
-              </div>
-              <div>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 14 }}>
+              <div className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
+                <div className="block-ticks" />
+                <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <WarnIcon groesse={14} />
                   Qualität &amp; Abnahme
                 </div>
-                <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(24px, 2.6vw, 34px)', fontWeight: 700, margin: '6px 0 0', letterSpacing: '-0.02em' }}>
-                  {heroText.titel}
-                </h1>
-                <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--ink-dim)', maxWidth: 480 }}>{heroText.subtitel}</p>
+                <div className="block-num" style={{ fontSize: 'clamp(34px, 3.6vw, 56px)' }}>{offeneMaengel.length}</div>
+                <div className="block-sub">{heroText.titel}</div>
+              </div>
+              <div className={`block ${kritischeMaengel.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
+                <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {kritischeMaengel.length > 0 && <WarnIcon groesse={14} />}
+                  {kritischeMaengel.length > 0 ? 'Kritische Mängel' : 'Kritisch'}
+                </div>
+                <div className="block-num" style={{ fontSize: 'clamp(30px, 3.2vw, 48px)' }}>{kritischeMaengel.length}</div>
+                <div className="block-sub">{heroText.subtitel}</div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap' }}>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                  {offeneMaengel.length}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4 }}>Offene Mängel</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
+              <div className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Über der Frist</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(ueberfaelligeMaengel.length)}</div>
               </div>
-              <div style={{ textAlign: 'right', borderLeft: '1px solid var(--glass-border)', paddingLeft: 24 }}>
-                <div
-                  style={{
-                    fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1,
-                    color: kritischeMaengel.length > 0 ? 'var(--red)' : 'inherit',
-                  }}
-                >
-                  {kritischeMaengel.length}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4 }}>Kritisch</div>
+              <div className="block olive" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Abnahme-Quote</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{abnahmeQuote === null ? '–' : `${abnahmeQuote}%`}</div>
+              </div>
+              <div className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Projekte mit Mängeln</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(projekteMitMaengeln.length)}</div>
+              </div>
+              <div className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+                <div className="block-lbl">Mängel gesamt</div>
+                <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(maengel.length)}</div>
               </div>
             </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
-            <Stat label="Offene Mängel" value={String(offeneMaengel.length)} />
-            <Stat label="Kritisch" value={String(kritischeMaengel.length)} warnend={kritischeMaengel.length > 0} />
-            <Stat label="Über der Frist" value={String(ueberfaelligeMaengel.length)} warnend={ueberfaelligeMaengel.length > 0} />
-            <Stat label="Abnahme-Quote" value={abnahmeQuote === null ? '–' : `${abnahmeQuote}%`} />
-          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 20, marginBottom: 24 }}>
             <div style={karteStil}>
@@ -297,14 +292,5 @@ export default function Maengel() {
         </>
       )}
     </AppShell>
-  )
-}
-
-function Stat({ label, value, warnend }: { label: string; value: string; warnend?: boolean }) {
-  return (
-    <div className="stat liquid" style={{ padding: '18px 20px' }}>
-      <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'var(--font-display)', marginTop: 4, color: warnend ? 'var(--red)' : 'inherit' }}>{value}</div>
-    </div>
   )
 }
