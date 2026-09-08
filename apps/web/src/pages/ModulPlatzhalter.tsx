@@ -53,7 +53,7 @@ const module: Record<string, ModulInfo> = {
   ausschreibung: {
     titel: 'Ausschreibung & LV',
     phase: 'Phase 1',
-    beschreibung: 'Leistungsverzeichnisse automatisch aus VOB-/StLB-Bau-Texten vorbefüllen und Handwerker darüber finden/matchen – der Schritt vor dem Angebot, das du schon je Projekt anlegen kannst.',
+    beschreibung: 'Leistungsverzeichnisse automatisch aus VOB-/StLB-Bau-Texten vorbefüllen und Handwerker darüber finden/matchen. Positionen je Gewerk kannst du schon heute anlegen (Tab „Ausschreibung & LV" im Projekt) – die automatische Textvorbefüllung und das Matching folgen später.',
   },
   foerdermittel: {
     titel: 'Fördermittel',

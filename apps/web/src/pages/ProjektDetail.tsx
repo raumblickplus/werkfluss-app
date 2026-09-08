@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import AppShell from '../components/AppShell'
 import Uebersicht, { type ProjektDetails } from './projekt/Uebersicht'
+import Ausschreibung from './projekt/Ausschreibung'
 import Angebote from './projekt/Angebote'
 import Bautagebuch from './projekt/Bautagebuch'
 import Maengel from './projekt/Maengel'
@@ -11,10 +12,11 @@ import Rechnungen from './projekt/Rechnungen'
 import { projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
 type Projekt = ProjektDetails & { breitengrad: number | null; laengengrad: number | null }
-type Tab = 'uebersicht' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'rechnungen'
+type Tab = 'uebersicht' | 'ausschreibung' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'rechnungen'
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'uebersicht', label: 'Übersicht' },
+  { key: 'ausschreibung', label: 'Ausschreibung & LV' },
   { key: 'angebote', label: 'Angebote' },
   { key: 'bautagebuch', label: 'Bautagebuch' },
   { key: 'maengel', label: 'Mängel' },
@@ -102,6 +104,7 @@ export default function ProjektDetail() {
       </div>
 
       {aktivTab === 'uebersicht' && <Uebersicht projekt={projekt} onAktualisiert={laden} />}
+      {aktivTab === 'ausschreibung' && <Ausschreibung projektId={id} />}
       {aktivTab === 'angebote' && <Angebote projektId={id} />}
       {aktivTab === 'bautagebuch' && (
         <Bautagebuch
