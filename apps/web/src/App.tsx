@@ -9,6 +9,7 @@ import ModulPlatzhalter from './pages/ModulPlatzhalter'
 import EinladungAnnehmen from './pages/EinladungAnnehmen'
 import FirmaEinladungAnnehmen from './pages/FirmaEinladungAnnehmen'
 import Team from './pages/Team'
+import Zeitplan from './pages/Zeitplan'
 import Einstellungen from './pages/Einstellungen'
 
 export default function App() {
@@ -44,6 +45,7 @@ export default function App() {
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/projekte/:id" element={<ProjektDetail />} />
       <Route path="/team" element={<Team />} />
+      <Route path="/zeitplan" element={<Zeitplan />} />
       <Route path="/einstellungen" element={<Einstellungen />} />
       <Route path="/modul/:modulId" element={<ModulPlatzhalter />} />
     </Routes>

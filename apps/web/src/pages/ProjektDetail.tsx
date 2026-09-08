@@ -23,7 +23,7 @@ const tabs: { key: Tab; label: string }[] = [
 ]
 
 const PROJEKT_SPALTEN =
-  'id, name, adresse, status, vorhabenart, gebaeudeklasse, kunde_name, kunde_kontakt, kunde_rechnungsadresse, breitengrad, laengengrad'
+  'id, name, adresse, status, vorhabenart, gebaeudeklasse, kunde_name, kunde_kontakt, kunde_rechnungsadresse, start_datum, end_datum_geplant, breitengrad, laengengrad'
 
 export default function ProjektDetail() {
   const { id } = useParams<{ id: string }>()

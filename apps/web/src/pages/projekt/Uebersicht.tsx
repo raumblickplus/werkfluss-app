@@ -13,6 +13,8 @@ export type ProjektDetails = {
   kunde_name: string | null
   kunde_kontakt: string | null
   kunde_rechnungsadresse: string | null
+  start_datum: string | null
+  end_datum_geplant: string | null
 }
 
 type Beteiligter = {
@@ -65,6 +67,8 @@ export default function Uebersicht({
         kunde_name: form.kunde_name || null,
         kunde_kontakt: form.kunde_kontakt || null,
         kunde_rechnungsadresse: form.kunde_rechnungsadresse || null,
+        start_datum: form.start_datum || null,
+        end_datum_geplant: form.end_datum_geplant || null,
         ...(neueKoordinaten ?? {}),
       })
       .eq('id', projekt.id)
@@ -129,7 +133,28 @@ export default function Uebersicht({
               {gebaeudeklasseOptionen.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
           </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+            Baubeginn (geplant)
+            <input
+              style={eingabeStil}
+              type="date"
+              value={form.start_datum ?? ''}
+              onChange={(e) => setForm({ ...form, start_datum: e.target.value })}
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+            Fertigstellung (geplant)
+            <input
+              style={eingabeStil}
+              type="date"
+              value={form.end_datum_geplant ?? ''}
+              onChange={(e) => setForm({ ...form, end_datum_geplant: e.target.value })}
+            />
+          </label>
         </div>
+        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-faint)' }}>
+          Baubeginn und geplante Fertigstellung steuern die Zeitstrahl-Ansicht im Modul „Zeitplan".
+        </p>
 
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '8px 0 0' }}>Bauherr / Kunde</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
