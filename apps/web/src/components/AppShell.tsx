@@ -127,6 +127,7 @@ function pfadFuer(id: string) {
   if (id === 'finanzen') return '/finanzen'
   if (id === 'buchhaltung') return '/finanzen?tab=buchhaltung'
   if (id === 'maengel') return '/maengel'
+  if (id === 'tagesbericht') return '/tagesbericht'
   if (id === 'einstellungen') return '/einstellungen'
   return `/modul/${id}`
 }
@@ -161,6 +162,7 @@ export default function AppShell({
     if (id === 'finanzen') return location.pathname === '/finanzen' && location.search !== '?tab=buchhaltung'
     if (id === 'buchhaltung') return location.pathname === '/finanzen' && location.search === '?tab=buchhaltung'
     if (id === 'maengel') return location.pathname === '/maengel'
+    if (id === 'tagesbericht') return location.pathname === '/tagesbericht'
     if (id === 'einstellungen') return location.pathname === '/einstellungen'
     return location.pathname === `/modul/${id}`
   }
@@ -218,7 +220,7 @@ export default function AppShell({
           </div>
           {actions && <div className="topbar-actions">{actions}</div>}
         </div>
-        <div style={{ maxWidth: wide ? 1360 : 880 }}>{children}</div>
+        <div style={{ maxWidth: wide ? 1480 : 880 }}>{children}</div>
       </div>
     </div>
   )

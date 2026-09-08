@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
@@ -117,6 +117,22 @@ function WetterIcon({ art, groesse = 40 }: { art: WetterArt; groesse?: number })
   }
 }
 
+function AktualisierenIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12a9 9 0 0 1 15.4-6.4L21 8M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15.4 6.4L3 16M3 21v-5h5" />
+    </svg>
+  )
+}
+function WarnBlockIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="4" /><path d="M12 8v5M12 16.2v.01" />
+    </svg>
+  )
+}
+
 const dringlichkeitVariante: Record<Mangel['dringlichkeit'], 'ok' | 'warn' | 'bad' | 'neutral'> = {
   kritisch: 'bad', mittel: 'warn', gering: 'neutral',
 }
@@ -171,35 +187,34 @@ export default function Dashboard() {
     )
   }, [])
 
-  useEffect(() => {
-    async function laden() {
-      setLadeStatus('laedt')
-      const [{ data: pData }, { data: aData }, { data: mData }, { data: rData }] = await Promise.all([
-        supabase.from('projekte').select('id, name, status'),
-        supabase
-          .from('aufgaben')
-          .select('id, titel, gewerk, faellig_am, status, projekt_id')
-          .neq('status', 'erledigt')
-          .order('faellig_am', { ascending: true, nullsFirst: false }),
-        supabase
-          .from('maengel')
-          .select('id, titel, dringlichkeit, status, frist, projekt_id')
-          .in('status', ['offen', 'in_bearbeitung'])
-          .order('dringlichkeit', { ascending: true }),
-        supabase
-          .from('rechnungen_ausgang')
-          .select('id, rechnungsnummer, summe_netto_cents, status, faellig_am, projekt_id')
-          .in('status', ['offen', 'ueberfaellig'])
-          .order('faellig_am', { ascending: true, nullsFirst: false }),
-      ])
-      setProjekte((pData ?? []) as Projekt[])
-      setAufgaben((aData ?? []) as Aufgabe[])
-      setMaengel((mData ?? []) as Mangel[])
-      setRechnungen((rData ?? []) as Rechnung[])
-      setLadeStatus('bereit')
-    }
-    laden()
+  const laden = useCallback(async () => {
+    setLadeStatus('laedt')
+    const [{ data: pData }, { data: aData }, { data: mData }, { data: rData }] = await Promise.all([
+      supabase.from('projekte').select('id, name, status'),
+      supabase
+        .from('aufgaben')
+        .select('id, titel, gewerk, faellig_am, status, projekt_id')
+        .neq('status', 'erledigt')
+        .order('faellig_am', { ascending: true, nullsFirst: false }),
+      supabase
+        .from('maengel')
+        .select('id, titel, dringlichkeit, status, frist, projekt_id')
+        .in('status', ['offen', 'in_bearbeitung'])
+        .order('dringlichkeit', { ascending: true }),
+      supabase
+        .from('rechnungen_ausgang')
+        .select('id, rechnungsnummer, summe_netto_cents, status, faellig_am, projekt_id')
+        .in('status', ['offen', 'ueberfaellig'])
+        .order('faellig_am', { ascending: true, nullsFirst: false }),
+    ])
+    setProjekte((pData ?? []) as Projekt[])
+    setAufgaben((aData ?? []) as Aufgabe[])
+    setMaengel((mData ?? []) as Mangel[])
+    setRechnungen((rData ?? []) as Rechnung[])
+    setLadeStatus('bereit')
   }, [])
+
+  useEffect(() => { laden() }, [laden])
 
   async function aufgabeErledigen(id: string) {
     setAufgaben((prev) => prev.filter((a) => a.id !== id))
@@ -220,36 +235,47 @@ export default function Dashboard() {
 
   return (
     <AppShell title="Dashboard" subtitle={aktivFirma?.name} wide>
-      {/* Begrüßung, Uhrzeit, Wetter */}
-      <div style={{ ...karteStil, padding: '30px 36px', marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 24 }}>
+      {/* Begrüßung, Uhrzeit, Wetter – grosszuegige Heldenkarte */}
+      <div style={{ ...karteStil, position: 'relative', padding: '38px 44px', marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 28 }}>
+        <div style={{ position: 'absolute', top: 22, right: 26, display: 'flex', gap: 8 }}>
+          <button className="fab-circle" title="Aktualisieren" onClick={() => laden()} style={{ background: 'rgba(23,20,14,.06)', color: 'var(--ink-dim)' }}>
+            <AktualisierenIcon />
+          </button>
+          <Link to="/" className="fab-circle" title="Zu den Projekten" style={{ background: 'var(--orange)', color: 'var(--on-accent)' }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </Link>
+        </div>
+
         <div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
             {jetzt.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(28px, 3.4vw, 42px)', fontWeight: 700, margin: '6px 0 0', letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(34px, 4.4vw, 56px)', fontWeight: 700, margin: '8px 0 0', letterSpacing: '-0.02em' }}>
             {begruessung(jetzt.getHours())}{vorname ? `, ${vorname}` : ''}.
           </h1>
-          <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--ink-dim)' }}>
+          <p style={{ margin: '10px 0 0', fontSize: 15, color: 'var(--ink-dim)', maxWidth: 440 }}>
             {heutigeAufgaben.length > 0
               ? `${heutigeAufgaben.length} Sache${heutigeAufgaben.length === 1 ? '' : 'n'} für heute auf dem Tisch – hier ist dein Überblick.`
               : 'Für heute steht nichts Dringendes an – hier ist trotzdem dein Überblick.'}
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 32, flexWrap: 'wrap' }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 44, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
               {jetzt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4 }}>Aktuelle Uhrzeit</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 6, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>Aktuelle Uhrzeit</div>
           </div>
 
           {wetter && wetter !== 'nicht_verfuegbar' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderLeft: '1px solid var(--glass-border)', paddingLeft: 24 }}>
-              <div style={{ color: 'var(--orange-deep)' }}><WetterIcon art={wetter.art} /></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, borderLeft: '1px solid var(--glass-border)', paddingLeft: 28 }}>
+              <div style={{ color: 'var(--orange-deep)' }}><WetterIcon art={wetter.art} groesse={44} /></div>
               <div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 700, lineHeight: 1 }}>{wetter.temperatur}°C</div>
-                <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4, maxWidth: 160 }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 30, fontWeight: 700, lineHeight: 1 }}>{wetter.temperatur}°C</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 6, maxWidth: 170 }}>
                   {wetterLabel[wetter.art]} · {baustellenHinweis[wetter.art]}
                 </div>
               </div>
@@ -262,22 +288,34 @@ export default function Dashboard() {
 
       {ladeStatus === 'bereit' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 28 }}>
-            <div className="stat liquid" style={{ padding: '22px 24px' }}>
-              <div className="num" style={{ fontSize: 40 }}>{projekte.length}</div>
-              <div className="lbl" style={{ fontSize: 12.5, marginTop: 5 }}>Projekte gesamt · {aktiveProjekte} in Ausführung/Abnahme</div>
+          {/* Grosse Farbblock-Kacheln, asymmetrisch wie im Referenz-Layout */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 18, marginBottom: 32 }}>
+            <div className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
+              <div className="block-lbl">Projekte gesamt</div>
+              <div className="block-num" style={{ fontSize: 'clamp(46px, 5vw, 68px)' }}>{projekte.length}</div>
+              <div className="block-sub">{aktiveProjekte} in Ausführung/Abnahme</div>
+              <div className="block-ticks" />
             </div>
-            <div className="stat liquid" style={{ padding: '22px 24px' }}>
-              <div className="num" style={{ fontSize: 40, color: kritischeMaengel > 0 ? 'var(--red)' : undefined }}>{maengel.length}</div>
-              <div className="lbl" style={{ fontSize: 12.5, marginTop: 5 }}>Offene Mängel · {kritischeMaengel} kritisch</div>
+            <div className={`block ${kritischeMaengel > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
+              <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {kritischeMaengel > 0 && <WarnBlockIcon />}
+                {kritischeMaengel > 0 ? 'Kritische Mängel' : 'Offene Mängel'}
+              </div>
+              <div className="block-num" style={{ fontSize: 'clamp(40px, 4.4vw, 58px)' }}>{kritischeMaengel > 0 ? kritischeMaengel : maengel.length}</div>
+              <div className="block-sub">
+                {kritischeMaengel > 0 ? `von ${maengel.length} offenen Mängeln insgesamt` : 'aktuell keine kritischen darunter'}
+              </div>
             </div>
-            <div className="stat liquid" style={{ padding: '22px 24px' }}>
-              <div className="num" style={{ fontSize: 40, color: heutigeAufgaben.length > 0 ? 'var(--red)' : undefined }}>{aufgaben.length}</div>
-              <div className="lbl" style={{ fontSize: 12.5, marginTop: 5 }}>Offene Aufgaben · {heutigeAufgaben.length} heute/überfällig</div>
+
+            <div className="block mustard" style={{ gridColumn: 'span 5', minWidth: 220 }}>
+              <div className="block-lbl">Offene Aufgaben</div>
+              <div className="block-num" style={{ fontSize: 'clamp(40px, 4.4vw, 58px)' }}>{aufgaben.length}</div>
+              <div className="block-sub">{heutigeAufgaben.length} heute fällig oder überfällig</div>
             </div>
-            <div className="stat liquid" style={{ padding: '22px 24px' }}>
-              <div className="num" style={{ fontSize: 40 }}>{euro.format(rechnungenSummeCents / 100)}</div>
-              <div className="lbl" style={{ fontSize: 12.5, marginTop: 5 }}>Offene Rechnungen (netto, {rechnungen.length})</div>
+            <div className="block cream" style={{ gridColumn: 'span 7', minWidth: 260 }}>
+              <div className="block-lbl">Offene Rechnungen (netto)</div>
+              <div className="block-num" style={{ fontSize: 'clamp(40px, 4.6vw, 60px)' }}>{euro.format(rechnungenSummeCents / 100)}</div>
+              <div className="block-sub" style={{ color: 'var(--ink-faint)' }}>{rechnungen.length} Rechnung{rechnungen.length === 1 ? '' : 'en'} offen</div>
             </div>
           </div>
 
@@ -295,7 +333,7 @@ export default function Dashboard() {
               {heutigeAufgaben.map((a) => {
                 const ueberfaellig = istUeberfaellig(a.faellig_am, heuteIso)
                 return (
-                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 12px', borderBottom: '1px solid rgba(40,28,14,.08)' }}>
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 12px', borderBottom: '1px solid rgba(23,20,14,.08)' }}>
                     <button
                       onClick={() => aufgabeErledigen(a.id)}
                       title="Als erledigt markieren"
@@ -330,7 +368,7 @@ export default function Dashboard() {
                   <Link
                     key={m.id}
                     to={`/projekte/${m.projekt_id}?tab=maengel`}
-                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 12px', borderBottom: '1px solid rgba(40,28,14,.08)', textDecoration: 'none', color: 'inherit' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 12px', borderBottom: '1px solid rgba(23,20,14,.08)', textDecoration: 'none', color: 'inherit' }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.titel}</div>
@@ -358,7 +396,7 @@ export default function Dashboard() {
                     <Link
                       key={r.id}
                       to={`/projekte/${r.projekt_id}?tab=rechnungen`}
-                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 12px', borderBottom: '1px solid rgba(40,28,14,.08)', textDecoration: 'none', color: 'inherit' }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 12px', borderBottom: '1px solid rgba(23,20,14,.08)', textDecoration: 'none', color: 'inherit' }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.rechnungsnummer}</div>

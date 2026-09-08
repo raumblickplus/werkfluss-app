@@ -22,7 +22,7 @@ export default function Marke({ mitWort = false, groesse = 36 }: { mitWort?: boo
           <path
             d="M20 60 L45 30 L70 60 L95 30 Q140 15 175 45 Q210 75 250 45 Q285 20 330 45"
             fill="none"
-            stroke="oklch(62% 0.17 52)"
+            stroke="var(--orange-deep)"
             strokeWidth="14"
             strokeLinecap="round"
             strokeLinejoin="round"
