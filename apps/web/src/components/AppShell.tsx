@@ -130,11 +130,13 @@ export default function AppShell({
   title,
   subtitle,
   actions,
+  wide = false,
   children,
 }: {
   title: string
   subtitle?: ReactNode
   actions?: ReactNode
+  wide?: boolean
   children: ReactNode
 }) {
   const navigate = useNavigate()
@@ -201,7 +203,7 @@ export default function AppShell({
           </div>
           {actions && <div className="topbar-actions">{actions}</div>}
         </div>
-        <div style={{ maxWidth: 880 }}>{children}</div>
+        <div style={{ maxWidth: wide ? 1360 : 880 }}>{children}</div>
       </div>
     </div>
   )
