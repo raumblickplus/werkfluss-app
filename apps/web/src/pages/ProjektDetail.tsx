@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient'
 import AppShell from '../components/AppShell'
 import Uebersicht, { type ProjektDetails } from './projekt/Uebersicht'
 import Ausschreibung from './projekt/Ausschreibung'
+import Kommunikation from './projekt/Kommunikation'
 import Angebote from './projekt/Angebote'
 import Bautagebuch from './projekt/Bautagebuch'
 import Maengel from './projekt/Maengel'
@@ -12,11 +13,12 @@ import Rechnungen from './projekt/Rechnungen'
 import { projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
 type Projekt = ProjektDetails & { breitengrad: number | null; laengengrad: number | null }
-type Tab = 'uebersicht' | 'ausschreibung' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'rechnungen'
+type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'rechnungen'
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'uebersicht', label: 'Übersicht' },
   { key: 'ausschreibung', label: 'Ausschreibung & LV' },
+  { key: 'kommunikation', label: 'Kommunikation' },
   { key: 'angebote', label: 'Angebote' },
   { key: 'bautagebuch', label: 'Bautagebuch' },
   { key: 'maengel', label: 'Mängel' },
@@ -105,6 +107,7 @@ export default function ProjektDetail() {
 
       {aktivTab === 'uebersicht' && <Uebersicht projekt={projekt} onAktualisiert={laden} />}
       {aktivTab === 'ausschreibung' && <Ausschreibung projektId={id} />}
+      {aktivTab === 'kommunikation' && <Kommunikation projektId={id} />}
       {aktivTab === 'angebote' && <Angebote projektId={id} />}
       {aktivTab === 'bautagebuch' && (
         <Bautagebuch

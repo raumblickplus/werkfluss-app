@@ -43,7 +43,7 @@ const module: Record<string, ModulInfo> = {
   kommunikation: {
     titel: 'Kommunikation',
     phase: 'Phase 3',
-    beschreibung: 'Projektbezogener Chat mit automatischer Protokollierung und Live-Übersetzung/Untertiteln für internationale Teams, statt dass Absprachen in WhatsApp verschwinden.',
+    beschreibung: 'Projektbezogener Chat und direkte Videotelefonie zwischen Kolleg:innen kannst du schon heute nutzen (Tab „Kommunikation“ im Projekt). Automatische Protokollierung, Live-Übersetzung/Untertitel für internationale Teams und eine automatische KI-To-Do-Liste aus dem Gesprächsverlauf folgen später, sobald ein Übersetzungs-/KI-Dienst angebunden ist.',
   },
   networking: {
     titel: 'Networking',
