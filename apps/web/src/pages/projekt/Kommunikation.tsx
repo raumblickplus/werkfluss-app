@@ -23,6 +23,10 @@ type Signal =
   | { typ: 'angebot'; sdp: RTCSessionDescriptionInit }
   | { typ: 'antwort'; sdp: RTCSessionDescriptionInit }
   | { typ: 'ice'; kandidat: RTCIceCandidateInit }
+  | { typ: 'aufnahme_anfrage'; besprechungId: string }
+  | { typ: 'aufnahme_start_ok'; besprechungId: string }
+  | { typ: 'aufnahme_abgelehnt' }
+  | { typ: 'aufnahme_ende' }
 
 const ICE_SERVER = { urls: 'stun:stun.l.google.com:19302' }
 const KLINGEL_TIMEOUT_MS = 30000
@@ -41,6 +45,20 @@ const SPRACHEN: { code: string; label: string }[] = [
 ]
 
 type AufgabenVorschlag = { titel: string; beschreibung?: string }
+
+type AufnahmeStatus = 'keine' | 'anfrage_gesendet' | 'anfrage_erhalten' | 'laeuft'
+type Protokoll = {
+  teilnehmer: string[]
+  zusammenfassung: string
+  themen: { titel: string; notiz?: string }[]
+  beschluesse: { text: string }[]
+}
+type Besprechung = {
+  id: string
+  status: 'angefragt' | 'laeuft' | 'wird_transkribiert' | 'transkribiert' | 'fehler'
+  protokoll: Protokoll | null
+  erstellt_am: string
+}
 
 // Projektbezogener Chat + direkte Videotelefonie zwischen Kolleg:innen, dazu
 // Live-Übersetzung (DeepL) und KI-To-Do-Vorschläge (Claude) aus dem Verlauf.
@@ -83,6 +101,16 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
   const [gegenueber, setGegenueber] = useState<Kollege | null>(null)
   const [eingehenderAnruf, setEingehenderAnruf] = useState<{ von: string; vonName: string; kanal: string } | null>(null)
   const [anrufFehler, setAnrufFehler] = useState<string | null>(null)
+
+  // Automatische Besprechungsprotokolle (Aufnahme mit Zustimmung + Whisper +
+  // Claude, siehe 0023_besprechungsprotokoll.sql).
+  const [aufnahmeStatus, setAufnahmeStatus] = useState<AufnahmeStatus>('keine')
+  const [eingehendeAufnahmeAnfrage, setEingehendeAufnahmeAnfrage] = useState<{ besprechungId: string } | null>(null)
+  const [aufnahmeFehler, setAufnahmeFehler] = useState<string | null>(null)
+  const [besprechungen, setBesprechungen] = useState<Besprechung[]>([])
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const aufnahmeChunksRef = useRef<Blob[]>([])
+  const aufnahmeMimeTypRef = useRef<string>('audio/webm')
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
@@ -224,6 +252,12 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
   // ---- Videotelefonie ----
 
   function aufraeumen() {
+    // Eine laufende Aufzeichnung wird beim Auflegen (egal von welcher
+    // Seite) noch fertig gestoppt - der onstop-Handler lädt sie hoch und
+    // stößt die Transkription an, unabhängig vom Anruf-Kanal.
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
     localStreamRef.current = null
     pcRef.current?.close()
@@ -235,6 +269,116 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
     setAnrufStatus('inaktiv')
     setGegenueber(null)
+    setEingehendeAufnahmeAnfrage(null)
+  }
+
+  // ---- Automatische Besprechungsprotokolle ----
+  // Startet nur, wenn BEIDE Seiten ausdrücklich zustimmen (Signal-
+  // Handshake unten) - unangekündigtes Mitschneiden eines nichtöffentlich
+  // gesprochenen Worts ist in Deutschland nach § 201 StGB strafbar. Jede
+  // Seite nimmt nur ihre eigene Tonspur auf; die Edge Function fügt beide
+  // Aufnahmen anhand ihrer Zeitstempel zu einem Gesprächsverlauf zusammen.
+  async function besprechungenLaden() {
+    const { data } = await supabase
+      .from('besprechungen')
+      .select('id, status, protokoll, erstellt_am')
+      .eq('projekt_id', projektId)
+      .order('erstellt_am', { ascending: false })
+    setBesprechungen((data ?? []) as unknown as Besprechung[])
+  }
+
+  async function aufnahmeAnfragen() {
+    if (!gegenueber || !meineId) return
+    setAufnahmeFehler(null)
+    const neueBesprechungId = crypto.randomUUID()
+    const { error } = await supabase.from('besprechungen').insert({
+      id: neueBesprechungId,
+      projekt_id: projektId,
+      gestartet_von: meineId,
+      teilnehmer: [meineId, gegenueber.nutzer_id],
+      status: 'angefragt',
+    })
+    if (error) { setAufnahmeFehler('Anfrage konnte nicht gestellt werden.'); return }
+    setAufnahmeStatus('anfrage_gesendet')
+    callChannelRef.current?.send({
+      type: 'broadcast', event: 'signal',
+      payload: { typ: 'aufnahme_anfrage', besprechungId: neueBesprechungId },
+    })
+  }
+
+  async function aufnahmeStarten(besprechungId: string) {
+    const stream = localStreamRef.current
+    if (!stream) return
+    try {
+      const audioStream = new MediaStream(stream.getAudioTracks())
+      // Safari/Chrome unterstützen unterschiedliche Aufnahmeformate (webm
+      // vs. mp4) - das tatsächlich unterstützte Format wird erkannt und
+      // mit hochgeladen, statt pauschal "webm" anzunehmen, damit Whisper
+      // die Datei später korrekt dekodieren kann.
+      const unterstuetzterTyp = ['audio/webm', 'audio/mp4', 'audio/ogg'].find((t) => MediaRecorder.isTypeSupported(t))
+      const recorder = unterstuetzterTyp ? new MediaRecorder(audioStream, { mimeType: unterstuetzterTyp }) : new MediaRecorder(audioStream)
+      aufnahmeMimeTypRef.current = recorder.mimeType || unterstuetzterTyp || 'audio/webm'
+      aufnahmeChunksRef.current = []
+      recorder.ondataavailable = (ev) => { if (ev.data.size > 0) aufnahmeChunksRef.current.push(ev.data) }
+      recorder.onstop = () => { aufnahmeHochladenUndTranskribieren(besprechungId) }
+      recorder.start()
+      mediaRecorderRef.current = recorder
+      setAufnahmeStatus('laeuft')
+      setEingehendeAufnahmeAnfrage(null)
+    } catch {
+      setAufnahmeFehler('Aufzeichnung konnte nicht gestartet werden.')
+    }
+  }
+
+  async function aufnahmeZustimmen() {
+    if (!eingehendeAufnahmeAnfrage) return
+    const { besprechungId } = eingehendeAufnahmeAnfrage
+    await supabase.from('besprechungen').update({ status: 'laeuft' }).eq('id', besprechungId)
+    callChannelRef.current?.send({
+      type: 'broadcast', event: 'signal',
+      payload: { typ: 'aufnahme_start_ok', besprechungId },
+    })
+    await aufnahmeStarten(besprechungId)
+  }
+
+  function aufnahmeAblehnen() {
+    const besprechungId = eingehendeAufnahmeAnfrage?.besprechungId
+    setEingehendeAufnahmeAnfrage(null)
+    callChannelRef.current?.send({ type: 'broadcast', event: 'signal', payload: { typ: 'aufnahme_abgelehnt' } })
+    if (besprechungId) supabase.from('besprechungen').delete().eq('id', besprechungId)
+  }
+
+  function aufnahmeBeenden(sendeSignal = true) {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
+    if (sendeSignal) {
+      callChannelRef.current?.send({ type: 'broadcast', event: 'signal', payload: { typ: 'aufnahme_ende' } })
+    }
+  }
+
+  async function aufnahmeHochladenUndTranskribieren(besprechungId: string) {
+    const chunks = aufnahmeChunksRef.current
+    aufnahmeChunksRef.current = []
+    mediaRecorderRef.current = null
+    setAufnahmeStatus('keine')
+    if (chunks.length === 0 || !meineId) return
+    const mimeType = aufnahmeMimeTypRef.current
+    const endung = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+    const blob = new Blob(chunks, { type: mimeType })
+    const pfad = `${besprechungId}/${meineId}.${endung}`
+    const { error: uploadFehler } = await supabase.storage.from('besprechungsaufnahmen').upload(pfad, blob, {
+      contentType: mimeType,
+      upsert: true,
+    })
+    if (uploadFehler) { setAufnahmeFehler('Aufnahme konnte nicht hochgeladen werden.'); return }
+    await supabase.from('besprechungsaufnahmen').insert({ besprechung_id: besprechungId, sprecher_id: meineId, datei_pfad: pfad })
+    await supabase.functions.invoke('besprechung-protokoll', { body: { besprechungId } })
+    besprechungenLaden()
+  }
+
+  async function beschluesseUebernehmen(beschluesse: { text: string }[]) {
+    await supabase.from('aufgaben').insert(beschluesse.map((b) => ({ projekt_id: projektId, titel: b.text })))
   }
 
   async function peerVerbindungErstellen(kanal: RealtimeChannel) {
@@ -286,6 +430,15 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
         aufraeumen()
       } else if (payload.typ === 'beendet') {
         aufraeumen()
+      } else if (payload.typ === 'aufnahme_anfrage') {
+        setEingehendeAufnahmeAnfrage({ besprechungId: payload.besprechungId })
+      } else if (payload.typ === 'aufnahme_start_ok') {
+        aufnahmeStarten(payload.besprechungId)
+      } else if (payload.typ === 'aufnahme_abgelehnt') {
+        setAufnahmeStatus('keine')
+        setAufnahmeFehler('Die Gegenseite hat die Aufzeichnung abgelehnt.')
+      } else if (payload.typ === 'aufnahme_ende') {
+        aufnahmeBeenden(false)
       }
     })
 
@@ -328,6 +481,15 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
       } else if (payload.typ === 'beendet') {
         aufraeumen()
         setEingehenderAnruf(null)
+      } else if (payload.typ === 'aufnahme_anfrage') {
+        setEingehendeAufnahmeAnfrage({ besprechungId: payload.besprechungId })
+      } else if (payload.typ === 'aufnahme_start_ok') {
+        aufnahmeStarten(payload.besprechungId)
+      } else if (payload.typ === 'aufnahme_abgelehnt') {
+        setAufnahmeStatus('keine')
+        setAufnahmeFehler('Die Gegenseite hat die Aufzeichnung abgelehnt.')
+      } else if (payload.typ === 'aufnahme_ende') {
+        aufnahmeBeenden(false)
       }
     })
 
@@ -359,6 +521,7 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
   }
 
   function anrufBeenden() {
+    if (aufnahmeStatus === 'laeuft') aufnahmeBeenden()
     callChannelRef.current?.send({ type: 'broadcast', event: 'signal', payload: { typ: 'beendet' } })
     aufraeumen()
   }
@@ -381,6 +544,8 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
     return () => { supabase.removeChannel(kanal) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meineId, kollegen])
+
+  useEffect(() => { besprechungenLaden() }, [projektId])
 
   useEffect(() => () => { aufraeumen() }, [])
 
@@ -474,6 +639,59 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
           jede Nachricht live in die oben gewählte Sprache übersetzt (DeepL), und „🤖 KI-To-Dos vorschlagen" liest den
           bisherigen Verlauf und schlägt Aufgaben vor, die du vor der Übernahme prüfen und auswählen kannst (Claude).
         </p>
+
+        {besprechungen.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-faint)', marginBottom: 8 }}>
+              Besprechungsprotokolle
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {besprechungen.map((b) => (
+                <div key={b.id} style={karteStil}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>
+                      {new Date(b.erstellt_am).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    {b.status !== 'transkribiert' && (
+                      <span style={{ fontSize: 11.5, color: b.status === 'fehler' ? 'var(--red)' : 'var(--ink-faint)' }}>
+                        {b.status === 'wird_transkribiert' ? 'Wird transkribiert …' : b.status === 'fehler' ? 'Transkription fehlgeschlagen' : 'Läuft …'}
+                      </span>
+                    )}
+                  </div>
+                  {b.protokoll && (
+                    <div style={{ marginTop: 8 }}>
+                      <p style={{ margin: '0 0 10px', fontSize: 13, lineHeight: 1.5 }}>{b.protokoll.zusammenfassung}</p>
+                      {b.protokoll.themen.length > 0 && (
+                        <>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-faint)', marginBottom: 4 }}>Themen</div>
+                          <ul style={{ margin: '0 0 10px', paddingLeft: 18, fontSize: 12.5 }}>
+                            {b.protokoll.themen.map((t, i) => (
+                              <li key={i}>{t.titel}{t.notiz ? ` – ${t.notiz}` : ''}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                      {b.protokoll.beschluesse.length > 0 && (
+                        <>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-faint)', marginBottom: 4 }}>Beschlüsse</div>
+                          <ul style={{ margin: '0 0 8px', paddingLeft: 18, fontSize: 12.5 }}>
+                            {b.protokoll.beschluesse.map((be, i) => <li key={i}>{be.text}</li>)}
+                          </ul>
+                          <button
+                            onClick={() => beschluesseUebernehmen(b.protokoll!.beschluesse)}
+                            style={{ ...knopfSekundaerStil, fontSize: 11.5, padding: '5px 10px' }}
+                          >
+                            Als Aufgaben übernehmen
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -524,6 +742,42 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
               autoPlay playsInline muted
               style={{ position: 'absolute', bottom: 8, right: 8, width: '30%', borderRadius: 8, border: '1px solid rgba(243,239,226,.3)' }}
             />
+          </div>
+          {anrufStatus === 'verbunden' && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {aufnahmeStatus === 'keine' && (
+                <button onClick={aufnahmeAnfragen} style={{ ...knopfSekundaerStil, fontSize: 11.5, padding: '6px 10px' }}>
+                  ⏺ Aufzeichnen &amp; protokollieren
+                </button>
+              )}
+              {aufnahmeStatus === 'anfrage_gesendet' && (
+                <span style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>Warte auf Zustimmung der Gegenseite …</span>
+              )}
+              {aufnahmeStatus === 'laeuft' && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontSize: 11.5, color: 'var(--red)', fontWeight: 700 }}>● Aufzeichnung läuft</span>
+                  <button onClick={() => aufnahmeBeenden()} style={{ ...knopfSekundaerStil, fontSize: 11, padding: '4px 8px' }}>
+                    Beenden
+                  </button>
+                </div>
+              )}
+              {aufnahmeFehler && <span style={{ fontSize: 11, color: 'var(--red)' }}>{aufnahmeFehler}</span>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {eingehendeAufnahmeAnfrage && (
+        <div style={{ ...karteStil, position: 'fixed', bottom: 24, right: 340, zIndex: 55, display: 'flex', flexDirection: 'column', gap: 8, padding: '14px 18px', maxWidth: 280 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700 }}>
+            {gegenueber?.vollname ?? 'Die Gegenseite'} möchte dieses Gespräch aufzeichnen und automatisch protokollieren lassen.
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>
+            Die Aufnahme wird nur zur Transkription verwendet und danach gelöscht - nur das Text-Protokoll bleibt erhalten.
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={knopfStil} onClick={aufnahmeZustimmen}>Zustimmen</button>
+            <button style={knopfSekundaerStil} onClick={aufnahmeAblehnen}>Ablehnen</button>
           </div>
         </div>
       )}
