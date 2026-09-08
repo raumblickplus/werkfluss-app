@@ -6,6 +6,8 @@ import Projekte from './pages/Projekte'
 import ProjektDetail from './pages/ProjektDetail'
 import ModulPlatzhalter from './pages/ModulPlatzhalter'
 import EinladungAnnehmen from './pages/EinladungAnnehmen'
+import FirmaEinladungAnnehmen from './pages/FirmaEinladungAnnehmen'
+import Team from './pages/Team'
 
 export default function App() {
   const { session, ladeStatus, firmen } = useAuth()
@@ -14,10 +16,11 @@ export default function App() {
   // Einladungslinks funktionieren unabhängig vom Anmeldestatus – die Seite
   // selbst zeigt bei Bedarf Login/Firma-Anlegen an, bevor sie die Einladung
   // annimmt.
-  if (location.pathname.startsWith('/einladung/')) {
+  if (location.pathname.startsWith('/einladung/') || location.pathname.startsWith('/firma-einladung/')) {
     return (
       <Routes>
         <Route path="/einladung/:token" element={<EinladungAnnehmen />} />
+        <Route path="/firma-einladung/:token" element={<FirmaEinladungAnnehmen />} />
       </Routes>
     )
   }
@@ -37,6 +40,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Projekte />} />
       <Route path="/projekte/:id" element={<ProjektDetail />} />
+      <Route path="/team" element={<Team />} />
       <Route path="/modul/:modulId" element={<ModulPlatzhalter />} />
     </Routes>
   )

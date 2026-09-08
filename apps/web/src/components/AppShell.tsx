@@ -115,7 +115,9 @@ const navGroups: NavGroup[] = [
 ]
 
 function pfadFuer(id: string) {
-  return id === 'projekte' ? '/' : `/modul/${id}`
+  if (id === 'projekte') return '/'
+  if (id === 'team') return '/team'
+  return `/modul/${id}`
 }
 
 // Baugleich mit der Sidebar+Topbar-Struktur aus dem Klick-Prototyp
@@ -140,6 +142,7 @@ export default function AppShell({
 
   function istAktiv(id: string) {
     if (id === 'projekte') return location.pathname === '/' || location.pathname.startsWith('/projekte')
+    if (id === 'team') return location.pathname === '/team'
     return location.pathname === `/modul/${id}`
   }
 
