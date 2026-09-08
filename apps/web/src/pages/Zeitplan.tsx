@@ -3,14 +3,12 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
-import { karteStil, pillStil, projektStatusLabel, projektStatusVariante } from './stil'
+import { karteStil, pillStil } from './stil'
 
 type ProjektZeile = {
   id: string
   name: string
   status: string
-  start_datum: string | null
-  end_datum_geplant: string | null
 }
 
 type Aufgabe = {
@@ -20,6 +18,13 @@ type Aufgabe = {
   faellig_am: string | null
   gewerk: string | null
   projekt_id: string
+}
+
+type GewerkZeile = {
+  projektId: string
+  projektName: string
+  gewerk: string
+  termine: Aufgabe[]
 }
 
 function alsIsoDatum(d: Date) {
@@ -48,7 +53,7 @@ function datumLabel(iso: string, heute: Date) {
   return new Date(iso).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })
 }
 
-const LABEL_SPALTE = 190
+const LABEL_SPALTE = 230
 
 export default function Zeitplan() {
   const { aktivFirma } = useAuth()
@@ -59,11 +64,7 @@ export default function Zeitplan() {
   async function laden() {
     setLadeStatus('laedt')
     const [{ data: pData }, { data: aData }] = await Promise.all([
-      supabase
-        .from('projekte')
-        .select('id, name, status, start_datum, end_datum_geplant')
-        .neq('status', 'abgeschlossen')
-        .order('start_datum', { ascending: true, nullsFirst: false }),
+      supabase.from('projekte').select('id, name, status').neq('status', 'abgeschlossen'),
       supabase
         .from('aufgaben')
         .select('id, titel, status, faellig_am, gewerk, projekt_id')
@@ -87,17 +88,34 @@ export default function Zeitplan() {
   const heuteIso = alsIsoDatum(heute)
   const projektName = (id: string) => projekte.find((p) => p.id === id)?.name ?? 'Unbekanntes Projekt'
 
-  const projekteMitZeitraum = projekte.filter((p) => p.start_datum && p.end_datum_geplant)
-  const projekteOhneZeitraum = projekte.filter((p) => !p.start_datum || !p.end_datum_geplant)
+  // Je Projekt + Gewerk eine Zeitstrahl-Zeile, mit allen echten Terminen (Aufgaben mit Fälligkeitsdatum) darin.
+  const gewerkeZeilen = useMemo(() => {
+    const zeilen: GewerkZeile[] = []
+    for (const a of aufgaben) {
+      const gewerk = a.gewerk?.trim() || 'Ohne Gewerk'
+      let zeile = zeilen.find((z) => z.projektId === a.projekt_id && z.gewerk === gewerk)
+      if (!zeile) {
+        zeile = { projektId: a.projekt_id, projektName: projektName(a.projekt_id), gewerk, termine: [] }
+        zeilen.push(zeile)
+      }
+      zeile.termine.push(a)
+    }
+    for (const z of zeilen) z.termine.sort((x, y) => (x.faellig_am! < y.faellig_am! ? -1 : 1))
+    zeilen.sort((x, y) => x.projektName.localeCompare(y.projektName) || x.gewerk.localeCompare(y.gewerk))
+    return zeilen
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aufgaben, projekte])
+
+  const projekteOhneTermine = projekte.filter((p) => !gewerkeZeilen.some((z) => z.projektId === p.id))
+  const gewerkeAnzahl = new Set(gewerkeZeilen.map((z) => z.gewerk)).size
 
   const { rangeStart, totalTage, monatsBuckets } = useMemo(() => {
     let start = addTage(heute, -14)
-    let end = addTage(heute, 120)
-    for (const p of projekteMitZeitraum) {
-      const s = new Date(p.start_datum!)
-      const e = new Date(p.end_datum_geplant!)
-      if (s < start) start = s
-      if (e > end) end = e
+    let end = addTage(heute, 90)
+    for (const a of aufgaben) {
+      const d = new Date(a.faellig_am!)
+      if (d < start) start = d
+      if (d > end) end = d
     }
     const absMin = addTage(heute, -365)
     const absMax = addTage(heute, 730)
@@ -118,7 +136,7 @@ export default function Zeitplan() {
     }
     return { rangeStart: start, totalTage: gesamt, monatsBuckets: buckets }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projekte, heute])
+  }, [aufgaben, heute])
 
   const heuteOffsetPct = Math.min(100, Math.max(0, (tageZwischen(rangeStart, heute) / totalTage) * 100))
 
@@ -134,6 +152,8 @@ export default function Zeitplan() {
     else naeherGruppiert.push({ datum: a.faellig_am!, eintraege: [a] })
   }
 
+  let vorherigesProjekt = ''
+
   return (
     <AppShell title="Zeitplan" subtitle={aktivFirma?.name} wide>
       {ladeStatus === 'laedt' ? (
@@ -141,30 +161,21 @@ export default function Zeitplan() {
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
-            <div className="stat liquid" style={{ padding: '18px 20px' }}>
-              <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>Im Zeitstrahl</div>
-              <div style={{ fontSize: 30, fontWeight: 700, fontFamily: 'var(--font-display)', marginTop: 4 }}>{projekteMitZeitraum.length}</div>
-            </div>
-            <div className="stat liquid" style={{ padding: '18px 20px' }}>
-              <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>Überfällige Termine</div>
-              <div style={{ fontSize: 30, fontWeight: 700, fontFamily: 'var(--font-display)', marginTop: 4, color: ueberfaellig.length ? 'var(--red)' : 'inherit' }}>{ueberfaellig.length}</div>
-            </div>
-            <div className="stat liquid" style={{ padding: '18px 20px' }}>
-              <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>Nächste 3 Wochen</div>
-              <div style={{ fontSize: 30, fontWeight: 700, fontFamily: 'var(--font-display)', marginTop: 4 }}>{naeher.length}</div>
-            </div>
-            <div className="stat liquid" style={{ padding: '18px 20px' }}>
-              <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>Ohne Zeitraum</div>
-              <div style={{ fontSize: 30, fontWeight: 700, fontFamily: 'var(--font-display)', marginTop: 4 }}>{projekteOhneZeitraum.length}</div>
-            </div>
+            <Stat label="Gewerke im Zeitstrahl" value={gewerkeAnzahl} />
+            <Stat label="Überfällige Termine" value={ueberfaellig.length} warnend={ueberfaellig.length > 0} />
+            <Stat label="Nächste 3 Wochen" value={naeher.length} />
+            <Stat label="Projekte ohne Termine" value={projekteOhneTermine.length} />
           </div>
 
           <div style={{ ...karteStil, marginBottom: 24, overflowX: 'auto' }}>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 16px' }}>Zeitstrahl</h2>
-            {projekteMitZeitraum.length === 0 ? (
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 4px' }}>Zeitstrahl nach Gewerk</h2>
+            <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--ink-faint)' }}>
+              Jeder Punkt ist ein echter Termin – eine Aufgabe mit Fälligkeitsdatum –, gruppiert je Projekt und Gewerk.
+            </p>
+            {gewerkeZeilen.length === 0 ? (
               <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>
-                Noch keine Projekte mit Baubeginn/Fertigstellung. Trage beide Termine in der Projekt-Übersicht ein,
-                damit sie hier als Balken erscheinen.
+                Noch keine offenen Aufgaben mit Gewerk und Fälligkeitsdatum. Trage beides bei den Aufgaben eines
+                Projekts ein, damit sie hier als Termine erscheinen.
               </p>
             ) : (
               <div style={{ minWidth: 640, position: 'relative' }}>
@@ -197,46 +208,58 @@ export default function Zeitplan() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {projekteMitZeitraum.map((p) => {
-                    const s = new Date(p.start_datum!)
-                    const e = new Date(p.end_datum_geplant!)
-                    const leftPct = Math.max(0, (tageZwischen(rangeStart, s) / totalTage) * 100)
-                    const widthPct = Math.max(((tageZwischen(s, e) + 1) / totalTage) * 100, 1.4)
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {gewerkeZeilen.map((z) => {
+                    const zeigeProjekt = z.projektName !== vorherigesProjekt
+                    vorherigesProjekt = z.projektName
+                    const daten = z.termine.map((a) => new Date(a.faellig_am!))
+                    const ersterPct = Math.max(0, (tageZwischen(rangeStart, daten[0]) / totalTage) * 100)
+                    const letzterPct = Math.max(0, (tageZwischen(rangeStart, daten[daten.length - 1]) / totalTage) * 100)
                     return (
-                      <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <Link
-                          to={`/projekte/${p.id}`}
-                          style={{
-                            width: LABEL_SPALTE, flexShrink: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--ink)',
-                            textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                          }}
-                          title={p.name}
-                        >
-                          {p.name}
-                        </Link>
-                        <div style={{ flex: 1, position: 'relative', height: 28 }}>
+                      <div key={`${z.projektId}-${z.gewerk}`}>
+                        {zeigeProjekt && (
+                          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-dim)', margin: '10px 0 4px', paddingLeft: 2 }}>
+                            {z.projektName}
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           <Link
-                            to={`/projekte/${p.id}`}
-                            title={`${p.name}: ${formatKurz(p.start_datum!)} – ${formatKurz(p.end_datum_geplant!)}`}
+                            to={`/projekte/${z.projektId}?tab=aufgaben`}
                             style={{
-                              position: 'absolute', left: `${leftPct}%`, width: `${widthPct}%`, top: 3, height: 22,
-                              borderRadius: 999, textDecoration: 'none', display: 'flex', alignItems: 'center',
-                              padding: '0 10px', overflow: 'hidden',
-                              background: p.status === 'planung'
-                                ? 'rgba(40,28,14,.16)'
-                                : 'linear-gradient(135deg, var(--orange), var(--orange-deep))',
+                              width: LABEL_SPALTE, flexShrink: 0, fontSize: 12, color: 'var(--ink-dim)', textDecoration: 'none',
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingLeft: 10,
                             }}
+                            title={z.gewerk}
                           >
-                            <span
-                              style={{
-                                fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
-                                color: p.status === 'planung' ? 'var(--ink-dim)' : 'oklch(20% 0.02 60)',
-                              }}
-                            >
-                              {formatKurz(p.start_datum!)} – {formatKurz(p.end_datum_geplant!)}
-                            </span>
+                            {z.gewerk} <span style={{ color: 'var(--ink-faint)' }}>({z.termine.length})</span>
                           </Link>
+                          <div style={{ flex: 1, position: 'relative', height: 26 }}>
+                            {daten.length > 1 && (
+                              <div
+                                style={{
+                                  position: 'absolute', left: `${ersterPct}%`, width: `${Math.max(letzterPct - ersterPct, 0)}%`,
+                                  top: 12, height: 2, background: 'var(--glass-border)',
+                                }}
+                              />
+                            )}
+                            {z.termine.map((a) => {
+                              const pct = Math.max(0, Math.min(100, (tageZwischen(rangeStart, new Date(a.faellig_am!)) / totalTage) * 100))
+                              const ueberf = a.faellig_am! < heuteIso
+                              return (
+                                <Link
+                                  key={a.id}
+                                  to={`/projekte/${a.projekt_id}?tab=aufgaben`}
+                                  title={`${a.titel} – ${formatKurz(a.faellig_am!)}`}
+                                  style={{
+                                    position: 'absolute', left: `${pct}%`, top: 6, transform: 'translateX(-50%)',
+                                    width: 13, height: 13, borderRadius: '50%',
+                                    background: ueberf ? 'var(--red)' : 'linear-gradient(135deg, var(--orange), var(--orange-deep))',
+                                    border: '2px solid var(--surface)',
+                                  }}
+                                />
+                              )
+                            })}
+                          </div>
                         </div>
                       </div>
                     )
@@ -285,15 +308,15 @@ export default function Zeitplan() {
             </div>
 
             <div style={karteStil}>
-              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>Projekte ohne Zeitraum</h2>
-              {projekteOhneZeitraum.length === 0 ? (
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Jedes laufende Projekt hat Baubeginn und Fertigstellung gesetzt.</p>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>Projekte ohne Termine</h2>
+              {projekteOhneTermine.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Jedes laufende Projekt hat mindestens eine offene Aufgabe mit Fälligkeitsdatum.</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {projekteOhneZeitraum.map((p) => (
+                  {projekteOhneTermine.map((p) => (
                     <Link
                       key={p.id}
-                      to={`/projekte/${p.id}`}
+                      to={`/projekte/${p.id}?tab=aufgaben`}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                         padding: '9px 12px', borderRadius: 13, background: 'rgba(255,255,255,.4)',
@@ -301,11 +324,11 @@ export default function Zeitplan() {
                       }}
                     >
                       <span style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                      <span style={pillStil(projektStatusVariante[p.status] ?? 'neutral')}>{projektStatusLabel[p.status] ?? p.status}</span>
+                      <span style={pillStil('neutral')}>Aufgaben →</span>
                     </Link>
                   ))}
                   <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--ink-faint)' }}>
-                    Zeitraum eintragen: Projekt öffnen → Übersicht → Baubeginn/Fertigstellung.
+                    Termine anlegen: Projekt öffnen → Aufgaben → Gewerk und Fälligkeitsdatum eintragen.
                   </p>
                 </div>
               )}
@@ -313,13 +336,22 @@ export default function Zeitplan() {
           </div>
 
           <p className="footnote">
-            Der Zeitstrahl baut auf Baubeginn/Fertigstellung je Projekt und den Fälligkeitsdaten der Aufgaben auf.
-            Gewerke-Abhängigkeiten, kritischer Pfad, Meilensteine und Kalendersync (Apple/Google/Outlook) sind als
-            nächste Ausbaustufe vorgesehen.
+            Der Zeitstrahl bildet echte Termine ab: Aufgaben mit Gewerk und Fälligkeitsdatum, je Projekt gruppiert.
+            Terminspannen je Gewerk, Abhängigkeiten zwischen Gewerken, kritischer Pfad und Kalendersync
+            (Apple/Google/Outlook) sind als nächste Ausbaustufe vorgesehen.
           </p>
         </>
       )}
     </AppShell>
+  )
+}
+
+function Stat({ label, value, warnend }: { label: string; value: number; warnend?: boolean }) {
+  return (
+    <div className="stat liquid" style={{ padding: '18px 20px' }}>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>{label}</div>
+      <div style={{ fontSize: 30, fontWeight: 700, fontFamily: 'var(--font-display)', marginTop: 4, color: warnend ? 'var(--red)' : 'inherit' }}>{value}</div>
+    </div>
   )
 }
 
