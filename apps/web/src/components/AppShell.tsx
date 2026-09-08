@@ -142,6 +142,7 @@ function pfadFuer(id: string) {
   if (id === 'maengel') return '/maengel'
   if (id === 'tagesbericht') return '/tagesbericht'
   if (id === 'networking') return '/netzwerk'
+  if (id === 'projektmappe') return '/projektmappe'
   if (id === 'einstellungen') return '/einstellungen'
   return `/modul/${id}`
 }
@@ -178,6 +179,7 @@ export default function AppShell({
     if (id === 'maengel') return location.pathname === '/maengel'
     if (id === 'tagesbericht') return location.pathname === '/tagesbericht'
     if (id === 'networking') return location.pathname === '/netzwerk'
+    if (id === 'projektmappe') return location.pathname === '/projektmappe'
     if (id === 'einstellungen') return location.pathname === '/einstellungen'
     return location.pathname === `/modul/${id}`
   }

@@ -157,6 +157,66 @@ select.eingabe, input.eingabe, textarea.eingabe {
 .tab { all: unset; padding: 9px 14px; font-size: 12.5px; font-weight: 700; color: var(--ink-faint); cursor: pointer; border-bottom: 2px solid transparent; }
 .tab.active { color: var(--ink); border-bottom-color: var(--orange); }
 
+/* ===== Projektmappe: dunkle Vollbild-Buehne (eigenes Erlebnis statt
+   normaler Seite, kein AppShell - siehe Projektmappe.tsx) ===== */
+.mappe-buehne {
+  --ink: #F3EFE2;
+  --ink-dim: rgba(243, 239, 226, .68);
+  --ink-faint: rgba(243, 239, 226, .48);
+  min-height: 100vh; background: #0B0A08; color: var(--ink);
+  display: flex; flex-direction: column;
+}
+.mappe-kopf {
+  display: flex; align-items: center; justify-content: space-between; padding: 24px 36px; flex-wrap: wrap; gap: 12px;
+  border-bottom: 1px solid rgba(243, 239, 226, .08); flex-shrink: 0;
+}
+.mappe-kopf-titel { font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+.mappe-kopf-sub { font-size: 12.5px; color: var(--ink-faint); margin-top: 3px; }
+.mappe-verlassen {
+  all: unset; padding: 9px 16px; border-radius: 999px; font-size: 12px; font-weight: 700; cursor: pointer;
+  background: rgba(243, 239, 226, .08); color: var(--ink); transition: background .15s;
+}
+.mappe-verlassen:hover { background: rgba(243, 239, 226, .16); }
+
+.mappe-koerper { flex: 1; display: flex; min-height: 0; }
+.mappe-buehnenflaeche { flex: 1; padding: 34px 36px; overflow-y: auto; }
+.mappe-projektliste {
+  width: 300px; flex-shrink: 0; border-left: 1px solid rgba(243, 239, 226, .08); padding: 24px 20px;
+  overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+}
+.mappe-projektliste-titel {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint); margin-bottom: 4px;
+}
+.mappe-projekt-item {
+  all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 14px;
+  cursor: pointer; background: rgba(243, 239, 226, .04); transition: background .15s;
+}
+.mappe-projekt-item:hover { background: rgba(243, 239, 226, .09); }
+.mappe-projekt-item.aktiv { background: var(--orange); }
+.mappe-projekt-item .nm { font-size: 13px; font-weight: 700; }
+.mappe-projekt-item .kd { font-size: 11px; color: var(--ink-faint); }
+.mappe-projekt-item.aktiv .kd { color: rgba(247, 243, 231, .8); }
+
+.mappe-leer { display: flex; align-items: center; justify-content: center; height: 100%; text-align: center; color: var(--ink-faint); }
+
+.muster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; }
+.muster-kachel {
+  border-radius: 18px; overflow: hidden; background: rgba(243, 239, 226, .05); border: 1px solid rgba(243, 239, 226, .08);
+  position: relative;
+}
+.muster-kachel-bild {
+  aspect-ratio: 1; display: flex; align-items: center; justify-content: center; background: rgba(243, 239, 226, .06); overflow: hidden;
+}
+.muster-kachel-bild img { width: 100%; height: 100%; object-fit: cover; }
+.muster-kachel-info { padding: 10px 12px 12px; }
+.muster-kachel-name { font-size: 12.5px; font-weight: 700; }
+.muster-kachel-kategorie { font-size: 10.5px; color: var(--ink-faint); margin-top: 2px; }
+.muster-loeschen {
+  all: unset; position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; background: rgba(11, 10, 8, .55); color: var(--ink);
+  font-size: 12px; cursor: pointer;
+}
+
 /* ===== Projekte: Kachel-Grid mit Foto ===== */
 .projekt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px; padding: 6px 2px; }
 .projekt-kachel {

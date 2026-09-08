@@ -15,6 +15,7 @@ import Finanzen from './pages/Finanzen'
 import Maengel from './pages/Maengel'
 import Tagesbericht from './pages/Tagesbericht'
 import Netzwerk from './pages/Netzwerk'
+import Projektmappe from './pages/Projektmappe'
 
 export default function App() {
   const { session, ladeStatus, firmen } = useAuth()
@@ -55,6 +56,7 @@ export default function App() {
       <Route path="/maengel" element={<Maengel />} />
       <Route path="/tagesbericht" element={<Tagesbericht />} />
       <Route path="/netzwerk" element={<Netzwerk />} />
+      <Route path="/projektmappe" element={<Projektmappe />} />
       <Route path="/modul/:modulId" element={<ModulPlatzhalter />} />
     </Routes>
   )
