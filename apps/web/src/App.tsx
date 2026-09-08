@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import FirmaAnlegen from './pages/FirmaAnlegen'
 import Projekte from './pages/Projekte'
 import ProjektDetail from './pages/ProjektDetail'
+import ModulPlatzhalter from './pages/ModulPlatzhalter'
 import EinladungAnnehmen from './pages/EinladungAnnehmen'
 
 export default function App() {
@@ -36,6 +37,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Projekte />} />
       <Route path="/projekte/:id" element={<ProjektDetail />} />
+      <Route path="/modul/:modulId" element={<ModulPlatzhalter />} />
     </Routes>
   )
 }

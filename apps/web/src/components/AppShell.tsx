@@ -1,12 +1,128 @@
 import type { ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import Marke from './Marke'
 
+type NavItem = { id: string; label: string; icon: ReactNode }
+type NavGroup = { titel: string; items: NavItem[] }
+
+const ic = {
+  dashboard: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" />
+      <rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" />
+    </svg>
+  ),
+  projekte: (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9.5 12 3l9 6.5" /><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10" />
+    </svg>
+  ),
+  finanzen: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" /><path d="M9 15.5c0 1.1 1.2 2 3 2s3-.7 3-1.8-1.2-1.6-3-2-3-.9-3-2 1.2-1.8 3-1.8 3 .9 3 2" />
+    </svg>
+  ),
+  zeitplan: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3.5" y="4.5" width="17" height="16" rx="2.5" /><path d="M3.5 9.5h17M8 3v3M16 3v3" />
+    </svg>
+  ),
+  tagesbericht: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 3.5h10a1 1 0 0 1 1 1V21l-3.5-2-2.5 2-2.5-2L6 21V4.5a1 1 0 0 1 1-1Z" /><path d="M9 8.5h6M9 12h6" />
+    </svg>
+  ),
+  maengel: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4M12 17h.01" />
+    </svg>
+  ),
+  cadbim: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="M12 21v-9M4 7.5 12 12l8-4.5" />
+    </svg>
+  ),
+  buchhaltung: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="2.5" /><path d="M8 9h8M8 13h8M8 17h5" />
+    </svg>
+  ),
+  kommunikation: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 11.5a7.5 7.5 0 0 1-11.4 6.4L4 19l1.2-4.6A7.5 7.5 0 1 1 21 11.5Z" />
+    </svg>
+  ),
+  networking: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="7" cy="7" r="2.8" /><circle cx="17" cy="7" r="2.8" /><circle cx="12" cy="18" r="2.8" />
+      <path d="m9.2 8.7 1.6 6.4M14.8 8.7l-1.6 6.4M9.6 7h4.8" />
+    </svg>
+  ),
+  ausschreibung: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 3.5h8l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" /><path d="M9 12.5h6M9 16h6" />
+    </svg>
+  ),
+  foerdermittel: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" /><path d="m9 15 6-6M9 9h.01M15 15h.01" />
+    </svg>
+  ),
+  projektmappe: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5v-10Z" />
+    </svg>
+  ),
+  team: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="8" r="3" /><path d="M2.5 19c0-3 3-5 6.5-5s6.5 2 6.5 5" /><circle cx="17.5" cy="8.5" r="2.3" /><path d="M15.5 19c.3-2.2 2-3.7 4-4" />
+    </svg>
+  ),
+  einstellungen: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 13.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1h-.2a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H10a1.7 1.7 0 0 0 1-1.5v-.2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V10a1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+    </svg>
+  ),
+} satisfies Record<string, ReactNode>
+
+const navGroups: NavGroup[] = [
+  { titel: 'Übersicht', items: [{ id: 'dashboard', label: 'Dashboard', icon: ic.dashboard }] },
+  {
+    titel: 'Projekt (Baustelle)',
+    items: [
+      { id: 'projekte', label: 'Projekte', icon: ic.projekte },
+      { id: 'finanzen', label: 'Finanzen', icon: ic.finanzen },
+      { id: 'zeitplan', label: 'Zeitplan', icon: ic.zeitplan },
+      { id: 'tagesbericht', label: 'Tagesbericht', icon: ic.tagesbericht },
+      { id: 'maengel', label: 'Mängel & Abnahme', icon: ic.maengel },
+      { id: 'cadbim', label: 'CAD/BIM', icon: ic.cadbim },
+    ],
+  },
+  { titel: 'Buchhaltung (Unternehmen)', items: [{ id: 'buchhaltung', label: 'Buchhaltung', icon: ic.buchhaltung }] },
+  {
+    titel: 'Zusammenarbeit',
+    items: [
+      { id: 'kommunikation', label: 'Kommunikation', icon: ic.kommunikation },
+      { id: 'networking', label: 'Networking', icon: ic.networking },
+      { id: 'ausschreibung', label: 'Ausschreibung & LV', icon: ic.ausschreibung },
+      { id: 'foerdermittel', label: 'Fördermittel', icon: ic.foerdermittel },
+      { id: 'projektmappe', label: 'Projektmappe', icon: ic.projektmappe },
+    ],
+  },
+  { titel: 'Verwaltung', items: [{ id: 'team', label: 'Team', icon: ic.team }, { id: 'einstellungen', label: 'Einstellungen', icon: ic.einstellungen }] },
+]
+
+function pfadFuer(id: string) {
+  return id === 'projekte' ? '/' : `/modul/${id}`
+}
+
 // Baugleich mit der Sidebar+Topbar-Struktur aus dem Klick-Prototyp
-// (app.html: .app / .sidebar / .main / .topbar). Bislang gibt es nur den
-// Bereich "Projekte" – die Icon-Leiste ist bewusst so gebaut, dass weitere
-// Module (Team, Einstellungen, …) hier später einfach ergänzt werden.
+// (app.html: .app / .sidebar / .main / .topbar), inkl. aller Modul-Gruppen
+// aus dem Konzept. "Projekte" ist fertig gebaut, alle anderen Punkte
+// führen vorerst zu einer Übersichtsseite mit dem geplanten Umfang/Phase –
+// bewusst so, damit das Gesamtbild der App schon jetzt sichtbar ist.
 export default function AppShell({
   title,
   subtitle,
@@ -19,7 +135,13 @@ export default function AppShell({
   children: ReactNode
 }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { aktivFirma, firmen, setAktivFirmaId, signOut } = useAuth()
+
+  function istAktiv(id: string) {
+    if (id === 'projekte') return location.pathname === '/' || location.pathname.startsWith('/projekte')
+    return location.pathname === `/modul/${id}`
+  }
 
   return (
     <div className="app">
@@ -28,12 +150,21 @@ export default function AppShell({
           <Marke />
         </div>
         <div className="nav">
-          <button className="active" data-tip="Projekte" onClick={() => navigate('/')}>
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 9.5 12 3l9 6.5" />
-              <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10" />
-            </svg>
-          </button>
+          {navGroups.map((gruppe, i) => (
+            <div key={gruppe.titel} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+              {i > 0 && <div style={{ width: 26, height: 1, background: 'rgba(255,250,240,.12)', margin: '5px 0' }} />}
+              {gruppe.items.map((item) => (
+                <button
+                  key={item.id}
+                  className={istAktiv(item.id) ? 'active' : ''}
+                  data-tip={item.label}
+                  onClick={() => navigate(pfadFuer(item.id))}
+                >
+                  {item.icon}
+                </button>
+              ))}
+            </div>
+          ))}
         </div>
         <div className="sidebar-foot">
           {firmen.length > 1 ? (
