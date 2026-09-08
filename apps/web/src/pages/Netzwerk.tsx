@@ -4,7 +4,7 @@ import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
 import { karteStil, eingabeStil, knopfStil, knopfSekundaerStil, pillStil } from './stil'
 
-type Gewerk = { id: string; name: string; sortierung: number }
+type Gewerk = { id: string; name: string; sortierung: number; firma_id: string | null }
 type Typ = 'mitarbeiter' | 'firma'
 type Kontakt = {
   id: string
@@ -46,10 +46,13 @@ export default function Netzwerk() {
   const [wirdGespeichert, setWirdGespeichert] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
 
+  const [neuesGewerk, setNeuesGewerk] = useState('')
+  const [gewerkFehler, setGewerkFehler] = useState<string | null>(null)
+
   async function laden() {
     setLadeStatus('laedt')
     const [{ data: gData }, { data: kData }] = await Promise.all([
-      supabase.from('gewerke').select('id, name, sortierung').order('sortierung'),
+      supabase.from('gewerke').select('id, name, sortierung, firma_id').order('sortierung'),
       supabase
         .from('netzwerk_kontakte')
         .select('id, name, typ, gewerk_id, telefon, email, website, logo_url')
@@ -115,6 +118,30 @@ export default function Netzwerk() {
     if (!confirm(`${k.name} wirklich aus dem Netzwerk entfernen?`)) return
     setKontakte((prev) => prev.filter((x) => x.id !== k.id))
     await supabase.from('netzwerk_kontakte').delete().eq('id', k.id)
+  }
+
+  async function gewerkErstellen(e: FormEvent) {
+    e.preventDefault()
+    if (!aktivFirma || !neuesGewerk.trim()) return
+    setGewerkFehler(null)
+    const naechsteSortierung = gewerke.reduce((max, g) => Math.max(max, g.sortierung), 0) + 1
+    const { error } = await supabase.from('gewerke').insert({
+      firma_id: aktivFirma.id,
+      name: neuesGewerk.trim(),
+      sortierung: naechsteSortierung,
+    })
+    if (error) {
+      setGewerkFehler(error.message.includes('duplicate') ? 'Dieses Gewerk gibt es schon.' : 'Konnte nicht gespeichert werden.')
+      return
+    }
+    setNeuesGewerk('')
+    await laden()
+  }
+
+  async function gewerkLoeschen(g: Gewerk) {
+    if (!confirm(`Gewerk „${g.name}" wirklich löschen?`)) return
+    setGewerke((prev) => prev.filter((x) => x.id !== g.id))
+    await supabase.from('gewerke').delete().eq('id', g.id)
   }
 
   const sektionen = useMemo(() => {
@@ -207,6 +234,53 @@ export default function Netzwerk() {
           </div>
         </form>
       )}
+
+      <div style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700, margin: 0 }}>Gewerke</h2>
+          <span style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>
+            Feste Liste plus eigene, firmenspezifische Ergänzungen
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {gewerke.map((g) => {
+            const eigenes = g.firma_id === aktivFirma?.id
+            return (
+              <span
+                key={g.id}
+                style={{
+                  ...pillStil('neutral'),
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  ...(eigenes ? { border: '1px solid var(--olive-light)' } : {}),
+                }}
+              >
+                {g.name}
+                {eigenes && (
+                  <button
+                    onClick={() => gewerkLoeschen(g)}
+                    title="Eigenes Gewerk entfernen"
+                    style={{ all: 'unset', cursor: 'pointer', fontSize: 12, lineHeight: 1, color: 'var(--ink-faint)' }}
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            )
+          })}
+        </div>
+        <form onSubmit={gewerkErstellen} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            style={{ ...eingabeStil, maxWidth: 240 }}
+            value={neuesGewerk}
+            onChange={(e) => setNeuesGewerk(e.target.value)}
+            placeholder="Neues Gewerk, z. B. Photovoltaik"
+          />
+          <button type="submit" style={knopfSekundaerStil} disabled={!neuesGewerk.trim()}>
+            + Gewerk
+          </button>
+          {gewerkFehler && <span style={{ fontSize: 12, color: 'var(--red)' }}>{gewerkFehler}</span>}
+        </form>
+      </div>
 
       {ladeStatus === 'laedt' ? (
         <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>
