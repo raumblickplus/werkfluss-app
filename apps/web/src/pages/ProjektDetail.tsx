@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
+import AppShell from '../components/AppShell'
 import Uebersicht, { type ProjektDetails } from './projekt/Uebersicht'
+import Angebote from './projekt/Angebote'
 import Bautagebuch from './projekt/Bautagebuch'
 import Maengel from './projekt/Maengel'
 import Aufgaben from './projekt/Aufgaben'
-import Angebote from './projekt/Angebote'
 import Rechnungen from './projekt/Rechnungen'
+import { projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
 type Projekt = ProjektDetails & { breitengrad: number | null; laengengrad: number | null }
 type Tab = 'uebersicht' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'rechnungen'
@@ -64,27 +66,26 @@ export default function ProjektDetail() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', padding: '32px 24px', maxWidth: 760, margin: '0 auto' }}>
-      <Link to="/" style={{ color: 'var(--ink-faint)', fontSize: 13, textDecoration: 'none' }}>← Alle Projekte</Link>
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, margin: '8px 0 4px' }}>{projekt.name}</h1>
-      {projekt.adresse && <p style={{ margin: '0 0 24px', color: 'var(--ink-dim)', fontSize: 14 }}>{projekt.adresse}</p>}
-
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)' }}>
+    <AppShell
+      title={projekt.name}
+      subtitle={
+        <>
+          <Link to="/" style={{ color: 'var(--ink-faint)', textDecoration: 'none' }}>← Alle Projekte</Link>
+          {projekt.adresse ? ` · ${projekt.adresse}` : ''}
+        </>
+      }
+      actions={
+        <span style={pillStil(projektStatusVariante[projekt.status] ?? 'neutral')}>
+          {projektStatusLabel[projekt.status] ?? projekt.status}
+        </span>
+      }
+    >
+      <div className="tabs">
         {tabs.map((t) => (
           <button
             key={t.key}
+            className={`tab${aktivTab === t.key ? ' active' : ''}`}
             onClick={() => setAktivTab(t.key)}
-            style={{
-              padding: '10px 4px',
-              marginRight: 20,
-              background: 'none',
-              border: 'none',
-              borderBottom: aktivTab === t.key ? '2px solid var(--orange)' : '2px solid transparent',
-              color: aktivTab === t.key ? 'var(--ink)' : 'var(--ink-faint)',
-              fontWeight: aktivTab === t.key ? 700 : 500,
-              fontSize: 14,
-              cursor: 'pointer',
-            }}
           >
             {t.label}
           </button>
@@ -92,6 +93,7 @@ export default function ProjektDetail() {
       </div>
 
       {aktivTab === 'uebersicht' && <Uebersicht projekt={projekt} onAktualisiert={laden} />}
+      {aktivTab === 'angebote' && <Angebote projektId={id} />}
       {aktivTab === 'bautagebuch' && (
         <Bautagebuch
           projektId={id}
@@ -103,10 +105,9 @@ export default function ProjektDetail() {
           }
         />
       )}
-      {aktivTab === 'angebote' && <Angebote projektId={id} />}
       {aktivTab === 'maengel' && <Maengel projektId={id} />}
       {aktivTab === 'aufgaben' && <Aufgaben projektId={id} />}
       {aktivTab === 'rechnungen' && <Rechnungen projektId={id} />}
-    </div>
+    </AppShell>
   )
 }

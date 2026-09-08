@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { adresseZuKoordinaten } from '../lib/wetter'
 import { useAuth } from '../lib/AuthContext'
-import Logo from '../components/Logo'
+import AppShell from '../components/AppShell'
 import AdresseSuche, { googleAdresssucheVerfuegbar } from '../components/AdresseSuche'
-import { eingabeStil, knopfStil, karteStil, knopfSekundaerStil, projektStatusLabel } from './stil'
+import { eingabeStil, knopfStil, karteStil, projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
 type Projekt = {
   id: string
@@ -15,7 +15,7 @@ type Projekt = {
 }
 
 export default function Projekte() {
-  const { aktivFirma, firmen, setAktivFirmaId, signOut } = useAuth()
+  const { aktivFirma } = useAuth()
   const [projekte, setProjekte] = useState<Projekt[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
   const [zeigeFormular, setZeigeFormular] = useState(false)
@@ -50,9 +50,6 @@ export default function Projekte() {
     e.preventDefault()
     if (!aktivFirma) return
 
-    // Wenn die Google-Adresssuche eine Adresse ausgewählt hat, nutzen wir deren
-    // Koordinaten direkt. Sonst (freies Textfeld) versuchen wir es über die
-    // kostenlose Geocoding-Schätzung.
     const koordinaten = neueKoordinaten ?? (neueAdresse ? await adresseZuKoordinaten(neueAdresse) : null)
 
     const { error } = await supabase.from('projekte').insert({
@@ -72,35 +69,15 @@ export default function Projekte() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', padding: '32px 24px', maxWidth: 760, margin: '0 auto' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-        <Logo size={44} />
-        <div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, margin: 0 }}>Projekte</h1>
-          {firmen.length > 1 ? (
-            <select
-              value={aktivFirma?.id ?? ''}
-              onChange={(e) => setAktivFirmaId(e.target.value)}
-              style={{ ...eingabeStil, marginTop: 6, fontSize: 13 }}
-            >
-              {firmen.map((f) => (
-                <option key={f.id} value={f.id}>{f.name}</option>
-              ))}
-            </select>
-          ) : (
-            <p style={{ margin: '4px 0 0', color: 'var(--ink-dim)', fontSize: 14 }}>{aktivFirma?.name}</p>
-          )}
-        </div>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button style={knopfStil} onClick={() => setZeigeFormular((v) => !v)}>
-            {zeigeFormular ? 'Abbrechen' : '+ Neues Projekt'}
-          </button>
-          <button style={knopfSekundaerStil} onClick={() => signOut()}>Abmelden</button>
-        </div>
-      </header>
-
+    <AppShell
+      title="Projekte"
+      subtitle={aktivFirma?.name}
+      actions={
+        <button style={knopfStil} onClick={() => setZeigeFormular((v) => !v)}>
+          {zeigeFormular ? 'Abbrechen' : '+ Neues Projekt'}
+        </button>
+      }
+    >
       {zeigeFormular && (
         <form onSubmit={projektAnlegen} style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
@@ -138,21 +115,21 @@ export default function Projekte() {
         <p style={{ color: 'var(--ink-faint)' }}>Noch keine Projekte – lege dein erstes Projekt an.</p>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {projekte.map((p) => (
-          <Link key={p.id} to={`/projekte/${p.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <div style={{ ...karteStil, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', cursor: 'pointer' }}>
-              <div>
-                <div style={{ fontWeight: 700 }}>{p.name}</div>
-                {p.adresse && <div style={{ fontSize: 13, color: 'var(--ink-dim)' }}>{p.adresse}</div>}
+      {projekte.length > 0 && (
+        <div className="liquid row-list">
+          {projekte.map((p) => (
+            <Link key={p.id} to={`/projekte/${p.id}`} className="proj-row">
+              <div className="nm">
+                {p.name}
+                {p.adresse && <span className="addr">{p.adresse}</span>}
               </div>
-              <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: 'oklch(93% 0.01 70)', color: 'var(--ink-dim)' }}>
+              <span style={pillStil(projektStatusVariante[p.status] ?? 'neutral')}>
                 {projektStatusLabel[p.status] ?? p.status}
               </span>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </AppShell>
   )
 }

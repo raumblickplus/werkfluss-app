@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
-import Logo from '../components/Logo'
+import Marke from '../components/Marke'
 import Login from './Login'
 import FirmaAnlegen from './FirmaAnlegen'
 import { karteStil, knopfStil } from './stil'
@@ -146,7 +146,7 @@ function MitteSeite({ children }: { children: ReactNode }) {
   return (
     <div style={{ minHeight: '100vh', padding: '48px 24px', maxWidth: 420, margin: '0 auto', textAlign: 'center' }}>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
-        <Logo size={44} />
+        <Marke mitWort groesse={38} />
       </div>
       {children}
     </div>
