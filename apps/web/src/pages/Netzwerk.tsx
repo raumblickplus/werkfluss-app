@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
 import { karteStil, eingabeStil, knopfStil, knopfSekundaerStil, pillStil } from './stil'
+import Firmenprofil from './Firmenprofil'
 
 type Gewerk = { id: string; name: string; sortierung: number; firma_id: string | null }
 type Typ = 'mitarbeiter' | 'firma'
@@ -34,6 +35,7 @@ export default function Netzwerk() {
   const [gewerke, setGewerke] = useState<Gewerk[]>([])
   const [kontakte, setKontakte] = useState<Kontakt[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
+  const [ansicht, setAnsicht] = useState<'kontakte' | 'profil'>('kontakte')
 
   const [formOffen, setFormOffen] = useState(false)
   const [name, setName] = useState('')
@@ -167,11 +169,34 @@ export default function Netzwerk() {
       subtitle={aktivFirma?.name}
       wide
       actions={
-        <button style={knopfStil} onClick={() => setFormOffen((v) => !v)}>
-          {formOffen ? 'Abbrechen' : '+ Kontakt hinzufügen'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => setAnsicht('kontakte')}
+              style={ansicht === 'kontakte' ? knopfSekundaerStil : { ...knopfSekundaerStil, opacity: 0.55 }}
+            >
+              Kontakte
+            </button>
+            <button
+              type="button"
+              onClick={() => setAnsicht('profil')}
+              style={ansicht === 'profil' ? knopfSekundaerStil : { ...knopfSekundaerStil, opacity: 0.55 }}
+            >
+              Mein Profil
+            </button>
+          </div>
+          {ansicht === 'kontakte' && (
+            <button style={knopfStil} onClick={() => setFormOffen((v) => !v)}>
+              {formOffen ? 'Abbrechen' : '+ Kontakt hinzufügen'}
+            </button>
+          )}
+        </div>
       }
     >
+      {ansicht === 'profil' && <Firmenprofil />}
+      {ansicht === 'kontakte' && (
+        <>
       {formOffen && (
         <form onSubmit={kontaktErstellen} style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -350,6 +375,8 @@ export default function Netzwerk() {
         welches Gewerk zur Verfügung steht, unabhängig von einem einzelnen Projekt. Die Zuordnung „wer arbeitet an
         welchem Projekt" bleibt weiterhin bei den projektbezogenen Beteiligten je Projekt.
       </p>
+        </>
+      )}
     </AppShell>
   )
 }
