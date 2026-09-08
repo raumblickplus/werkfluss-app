@@ -9,11 +9,12 @@ import Angebote from './projekt/Angebote'
 import Bautagebuch from './projekt/Bautagebuch'
 import Maengel from './projekt/Maengel'
 import Aufgaben from './projekt/Aufgaben'
+import Abnahme from './projekt/Abnahme'
 import Rechnungen from './projekt/Rechnungen'
 import { projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
 type Projekt = ProjektDetails & { breitengrad: number | null; laengengrad: number | null }
-type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'rechnungen'
+type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'rechnungen'
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'uebersicht', label: 'Übersicht' },
@@ -23,6 +24,7 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'bautagebuch', label: 'Bautagebuch' },
   { key: 'maengel', label: 'Mängel' },
   { key: 'aufgaben', label: 'Aufgaben' },
+  { key: 'abnahme', label: 'Abnahme' },
   { key: 'rechnungen', label: 'Rechnungen' },
 ]
 
@@ -122,6 +124,7 @@ export default function ProjektDetail() {
       )}
       {aktivTab === 'maengel' && <Maengel projektId={id} />}
       {aktivTab === 'aufgaben' && <Aufgaben projektId={id} />}
+      {aktivTab === 'abnahme' && <Abnahme projektId={id} />}
       {aktivTab === 'rechnungen' && <Rechnungen projektId={id} />}
     </AppShell>
   )
