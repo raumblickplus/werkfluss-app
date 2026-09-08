@@ -9,6 +9,7 @@ import ModulPlatzhalter from './pages/ModulPlatzhalter'
 import EinladungAnnehmen from './pages/EinladungAnnehmen'
 import FirmaEinladungAnnehmen from './pages/FirmaEinladungAnnehmen'
 import Team from './pages/Team'
+import TeamChat from './pages/TeamChat'
 import Zeitplan from './pages/Zeitplan'
 import Einstellungen from './pages/Einstellungen'
 import Finanzen from './pages/Finanzen'
@@ -50,6 +51,7 @@ export default function App() {
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/projekte/:id" element={<ProjektDetail />} />
       <Route path="/team" element={<Team />} />
+          <Route path="/team-chat" element={<TeamChat />} />
       <Route path="/zeitplan" element={<Zeitplan />} />
       <Route path="/einstellungen" element={<Einstellungen />} />
       <Route path="/finanzen" element={<Finanzen />} />

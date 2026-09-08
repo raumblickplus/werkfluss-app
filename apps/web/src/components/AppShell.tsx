@@ -128,7 +128,11 @@ const navGroups: NavGroup[] = [
   {
     titel: 'Verwaltung',
     akzent: { bg: '#FBF8F0', text: '#1C1A14' },
-    items: [{ id: 'team', label: 'Team', icon: ic.team }, { id: 'einstellungen', label: 'Einstellungen', icon: ic.einstellungen }],
+    items: [
+      { id: 'team', label: 'Team', icon: ic.team },
+      { id: 'team-chat', label: 'Team-Chat', icon: ic.kommunikation },
+      { id: 'einstellungen', label: 'Einstellungen', icon: ic.einstellungen },
+    ],
   },
 ]
 
@@ -144,6 +148,7 @@ function pfadFuer(id: string) {
   if (id === 'networking') return '/netzwerk'
   if (id === 'projektmappe') return '/projektmappe'
   if (id === 'einstellungen') return '/einstellungen'
+  if (id === 'team-chat') return '/team-chat'
   return `/modul/${id}`
 }
 
@@ -181,6 +186,7 @@ export default function AppShell({
     if (id === 'networking') return location.pathname === '/netzwerk'
     if (id === 'projektmappe') return location.pathname === '/projektmappe'
     if (id === 'einstellungen') return location.pathname === '/einstellungen'
+    if (id === 'team-chat') return location.pathname === '/team-chat'
     return location.pathname === `/modul/${id}`
   }
 
