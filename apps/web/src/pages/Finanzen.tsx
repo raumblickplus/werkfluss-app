@@ -159,6 +159,21 @@ export default function Finanzen() {
     }
   }, [ueberfaelligeRechnungen.length, ueberfaelligeSummeCents, offeneRechnungen.length, offeneForderungenCents, angeboteVersendet.length])
 
+  // Finanzen/Buchhaltung sind auf der Datenbank-Ebene bereits auf
+  // finanziell Berechtigte beschränkt (hat_finanz_zugriff, 0022_mitarbeiter_
+  // rechte.sql) - dieser Frontend-Guard verhindert nur, dass jemand ohne
+  // diese Rolle eine leere/kaputte Seite statt einer klaren Erklärung sieht.
+  const hatFinanzZugriff = !!aktivFirma && ['inhaber', 'geschaeftsfuehrung', 'finanzen'].includes(aktivFirma.rolle)
+  if (!hatFinanzZugriff) {
+    return (
+      <AppShell title="Finanzen" subtitle={aktivFirma?.name}>
+        <p style={{ color: 'var(--ink-faint)' }}>
+          Dieser Bereich ist auf Inhaber, Geschäftsführung und die Rolle „Finanzen" beschränkt.
+        </p>
+      </AppShell>
+    )
+  }
+
   return (
     <AppShell title="Finanzen" subtitle={aktivFirma?.name} wide>
       <div className="tabs">

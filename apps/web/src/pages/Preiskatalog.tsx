@@ -95,6 +95,11 @@ export default function Preiskatalog() {
     return geordnet
   }, [positionen, gewerke])
 
+  // Preiskatalog pflegen ist auf Inhaber/Geschäftsführung/Einkauf beschränkt
+  // (hat_einkauf_zugriff, 0022_mitarbeiter_rechte.sql) - lesen dürfen ihn
+  // weiterhin alle Firmenmitglieder, sie brauchen ihn ja für Angebote.
+  const darfBearbeiten = !!aktivFirma && ['inhaber', 'geschaeftsfuehrung', 'einkauf'].includes(aktivFirma.rolle)
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
@@ -102,12 +107,14 @@ export default function Preiskatalog() {
           Eigene Standardpreise je Leistung. Beim Erstellen eines Angebots aus dem Leistungsverzeichnis eines
           Projekts werden offene Positionen automatisch anhand des Kurztexts gegen diesen Katalog abgeglichen.
         </p>
-        <button style={knopfStil} onClick={() => setZeigeFormular((v) => !v)}>
-          {zeigeFormular ? 'Abbrechen' : '+ Position'}
-        </button>
+        {darfBearbeiten && (
+          <button style={knopfStil} onClick={() => setZeigeFormular((v) => !v)}>
+            {zeigeFormular ? 'Abbrechen' : '+ Position'}
+          </button>
+        )}
       </div>
 
-      {zeigeFormular && (
+      {darfBearbeiten && zeigeFormular && (
         <form onSubmit={anlegen} style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', flex: '2 1 260px' }}>
@@ -178,13 +185,15 @@ export default function Preiskatalog() {
                   <span style={{ fontSize: 12.5, color: 'var(--ink-dim)', whiteSpace: 'nowrap' }}>
                     {euro.format(p.einzelpreis_cents / 100)}
                   </span>
-                  <button
-                    onClick={() => loeschen(p)}
-                    title="Entfernen"
-                    style={{ all: 'unset', cursor: 'pointer', fontSize: 13, color: 'var(--ink-faint)', padding: '0 4px' }}
-                  >
-                    ×
-                  </button>
+                  {darfBearbeiten && (
+                    <button
+                      onClick={() => loeschen(p)}
+                      title="Entfernen"
+                      style={{ all: 'unset', cursor: 'pointer', fontSize: 13, color: 'var(--ink-faint)', padding: '0 4px' }}
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

@@ -136,6 +136,20 @@ const navGroups: NavGroup[] = [
   },
 ]
 
+// Interne Firma-Rollen (firma_mitglieder.rolle, siehe 0022_mitarbeiter_rechte.sql):
+// Finanzen/Buchhaltung enthält ausschließlich sensible Finanzdaten und wird
+// für alle ohne Finanzrolle komplett ausgeblendet. Team und Einstellungen
+// bleiben dagegen für alle sichtbar - die brauchen z.B. jedes Mitglied für
+// die eigene Team-Übersicht bzw. das eigene Profil/Passwort; die admin-
+// pflichtigen Teile davon (Firma bearbeiten, Mitglieder einladen/entfernen)
+// blenden Team.tsx/Einstellungen.tsx bereits selbst anhand von istAdmin aus.
+const FINANZ_ROLLEN = ['inhaber', 'geschaeftsfuehrung', 'finanzen']
+
+function istNavPunktSichtbar(id: string, rolle: string | undefined) {
+  if (id === 'finanzen' || id === 'buchhaltung') return !!rolle && FINANZ_ROLLEN.includes(rolle)
+  return true
+}
+
 function pfadFuer(id: string) {
   if (id === 'projekte') return '/'
   if (id === 'dashboard') return '/dashboard'
@@ -197,25 +211,29 @@ export default function AppShell({
           <Marke mitWort groesse={32} />
         </div>
         <div className="nav">
-          {navGroups.map((gruppe) => (
-            <div
-              key={gruppe.titel}
-              className="nav-group"
-              style={{ '--accent-solid': gruppe.akzent.bg, '--accent-text': gruppe.akzent.text } as CSSProperties}
-            >
-              <div className="nav-group-title">{gruppe.titel}</div>
-              {gruppe.items.map((item) => (
-                <button
-                  key={item.id}
-                  className={`nav-item${istAktiv(item.id) ? ' active' : ''}`}
-                  onClick={() => navigate(pfadFuer(item.id))}
-                >
-                  <span className="ico">{item.icon}</span>
-                  <span className="lbl">{item.label}</span>
-                </button>
-              ))}
-            </div>
-          ))}
+          {navGroups.map((gruppe) => {
+            const sichtbareItems = gruppe.items.filter((item) => istNavPunktSichtbar(item.id, aktivFirma?.rolle))
+            if (sichtbareItems.length === 0) return null
+            return (
+              <div
+                key={gruppe.titel}
+                className="nav-group"
+                style={{ '--accent-solid': gruppe.akzent.bg, '--accent-text': gruppe.akzent.text } as CSSProperties}
+              >
+                <div className="nav-group-title">{gruppe.titel}</div>
+                {sichtbareItems.map((item) => (
+                  <button
+                    key={item.id}
+                    className={`nav-item${istAktiv(item.id) ? ' active' : ''}`}
+                    onClick={() => navigate(pfadFuer(item.id))}
+                  >
+                    <span className="ico">{item.icon}</span>
+                    <span className="lbl">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )
+          })}
         </div>
         <div className="sidebar-foot">
           {firmen.length > 1 ? (
