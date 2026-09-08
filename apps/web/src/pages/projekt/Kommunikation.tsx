@@ -27,15 +27,35 @@ type Signal =
 const ICE_SERVER = { urls: 'stun:stun.l.google.com:19302' }
 const KLINGEL_TIMEOUT_MS = 30000
 
-// Projektbezogener Chat + direkte Videotelefonie zwischen Kolleg:innen.
+const SPRACHEN: { code: string; label: string }[] = [
+  { code: 'DE', label: 'Deutsch' },
+  { code: 'EN', label: 'Englisch' },
+  { code: 'TR', label: 'Türkisch' },
+  { code: 'PL', label: 'Polnisch' },
+  { code: 'RO', label: 'Rumänisch' },
+  { code: 'RU', label: 'Russisch' },
+  { code: 'UK', label: 'Ukrainisch' },
+  { code: 'IT', label: 'Italienisch' },
+  { code: 'FR', label: 'Französisch' },
+  { code: 'ES', label: 'Spanisch' },
+]
+
+type AufgabenVorschlag = { titel: string; beschreibung?: string }
+
+// Projektbezogener Chat + direkte Videotelefonie zwischen Kolleg:innen, dazu
+// Live-Übersetzung (DeepL) und KI-To-Do-Vorschläge (Claude) aus dem Verlauf.
 // Die Videotelefonie läuft per WebRTC direkt zwischen den beiden Browsern;
 // Supabase Realtime dient nur als "Vermittlungsstelle" für Anruf-Anfrage,
 // Angebot/Antwort und ICE-Kandidaten, es fließen keine Anruf-Inhalte über
 // den Server. Funktioniert nur, solange beide diesen Tab offen haben – eine
 // projektübergreifende Klingel-Benachrichtigung ist bewusst (noch) nicht Teil
-// dieser ersten Version, ebenso wenig wie Live-Übersetzung oder eine
-// automatische KI-To-Do-Erstellung aus dem Gesprächsverlauf – beides würde
-// einen externen Übersetzungs-/KI-Dienst mit eigenem API-Key voraussetzen.
+// dieser ersten Version.
+// Übersetzung und KI-To-Dos laufen über zwei Supabase Edge Functions
+// (supabase/functions/uebersetzen, supabase/functions/ki-todos), die die
+// Secrets DEEPL_API_KEY bzw. ANTHROPIC_API_KEY serverseitig verwenden – die
+// Keys erreichen den Browser nie. Die KI-To-Do-Funktion liest nur (mit RLS
+// der aufrufenden Person) und schreibt nichts direkt; die Übernahme in die
+// Aufgaben-Tabelle passiert erst nach Bestätigung im Vorschlags-Panel.
 export default function Kommunikation({ projektId }: { projektId: string }) {
   const { session, aktivFirma } = useAuth()
   const meineId = session?.user?.id ?? null
@@ -45,6 +65,19 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
   const [kollegen, setKollegen] = useState<Kollege[]>([])
   const listeEndeRef = useRef<HTMLDivElement>(null)
+
+  // Live-Übersetzung: Zielsprache global wählbar, Übersetzungen pro Nachricht gecacht.
+  const [zielsprache, setZielsprache] = useState('EN')
+  const [uebersetzungen, setUebersetzungen] = useState<Record<string, string>>({})
+  const [uebersetztWird, setUebersetztWird] = useState<string | null>(null)
+  const [uebersetzungsFehler, setUebersetzungsFehler] = useState<string | null>(null)
+
+  // KI-To-Do-Vorschläge aus dem Gesprächsverlauf.
+  const [vorschlaege, setVorschlaege] = useState<AufgabenVorschlag[] | null>(null)
+  const [vorschlaegeLaden, setVorschlaegeLaden] = useState(false)
+  const [vorschlaegeFehler, setVorschlaegeFehler] = useState<string | null>(null)
+  const [ausgewaehlteVorschlaege, setAusgewaehlteVorschlaege] = useState<Set<number>>(new Set())
+  const [uebernahmeLaeuft, setUebernahmeLaeuft] = useState(false)
 
   const [anrufStatus, setAnrufStatus] = useState<AnrufStatus>('inaktiv')
   const [gegenueber, setGegenueber] = useState<Kollege | null>(null)
@@ -134,6 +167,58 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
     const inhalt = text.trim()
     setText('')
     await supabase.from('projekt_nachrichten').insert({ projekt_id: projektId, autor_id: meineId, text: inhalt })
+  }
+
+  // ---- Live-Übersetzung (DeepL, per Edge Function) ----
+  async function nachrichtUebersetzen(nachricht: Nachricht) {
+    const cacheKey = `${nachricht.id}-${zielsprache}`
+    if (uebersetzungen[cacheKey]) return
+    setUebersetztWird(nachricht.id)
+    setUebersetzungsFehler(null)
+    const { data, error } = await supabase.functions.invoke('uebersetzen', {
+      body: { text: nachricht.text, zielsprache },
+    })
+    setUebersetztWird(null)
+    if (error || data?.fehler) {
+      setUebersetzungsFehler('Übersetzung fehlgeschlagen. Sind die Supabase-Secrets korrekt hinterlegt?')
+      return
+    }
+    setUebersetzungen((bisher) => ({ ...bisher, [cacheKey]: data.text }))
+  }
+
+  // ---- KI-To-Do-Vorschläge (Anthropic, per Edge Function) ----
+  async function vorschlaegeLaden_() {
+    setVorschlaegeLaden(true)
+    setVorschlaegeFehler(null)
+    setVorschlaege(null)
+    const { data, error } = await supabase.functions.invoke('ki-todos', { body: { projektId } })
+    setVorschlaegeLaden(false)
+    if (error || data?.fehler) {
+      setVorschlaegeFehler('Vorschläge konnten nicht erstellt werden. Sind die Supabase-Secrets korrekt hinterlegt?')
+      return
+    }
+    setVorschlaege(data.vorschlaege ?? [])
+    setAusgewaehlteVorschlaege(new Set((data.vorschlaege ?? []).map((_: unknown, i: number) => i)))
+  }
+
+  function vorschlagUmschalten(index: number) {
+    setAusgewaehlteVorschlaege((bisher) => {
+      const neu = new Set(bisher)
+      if (neu.has(index)) neu.delete(index)
+      else neu.add(index)
+      return neu
+    })
+  }
+
+  async function vorschlaegeUebernehmen() {
+    if (!vorschlaege || ausgewaehlteVorschlaege.size === 0) return
+    setUebernahmeLaeuft(true)
+    const auszuUebernehmen = vorschlaege.filter((_, i) => ausgewaehlteVorschlaege.has(i))
+    await supabase.from('aufgaben').insert(
+      auszuUebernehmen.map((v) => ({ projekt_id: projektId, titel: v.titel, beschreibung: v.beschreibung ?? null }))
+    )
+    setUebernahmeLaeuft(false)
+    setVorschlaege(null)
   }
 
   // ---- Videotelefonie ----
@@ -305,6 +390,25 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
     <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ ...karteStil, padding: 0, display: 'flex', flexDirection: 'column', height: 420 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--glass-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Übersetzen nach</span>
+              <select
+                value={zielsprache}
+                onChange={(e) => setZielsprache(e.target.value)}
+                style={{ ...eingabeStil, padding: '4px 8px', fontSize: 12, width: 'auto' }}
+              >
+                {SPRACHEN.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
+              </select>
+            </div>
+            <button
+              onClick={vorschlaegeLaden_}
+              disabled={vorschlaegeLaden}
+              style={{ ...knopfSekundaerStil, padding: '4px 10px', fontSize: 12 }}
+            >
+              {vorschlaegeLaden ? 'Erstelle Vorschläge …' : '🤖 KI-To-Dos vorschlagen'}
+            </button>
+          </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {ladeStatus === 'laedt' && <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>}
             {ladeStatus === 'bereit' && nachrichtenSortiert.length === 0 && (
@@ -312,6 +416,7 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
             )}
             {nachrichtenSortiert.map((n) => {
               const eigene = n.autor_id === meineId
+              const uebersetzung = uebersetzungen[`${n.id}-${zielsprache}`]
               return (
                 <div key={n.id} style={{ display: 'flex', flexDirection: 'column', alignItems: eigene ? 'flex-end' : 'flex-start' }}>
                   {!eigene && <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink-faint)', marginBottom: 2 }}>{n.profil ?? 'Unbekannt'}</div>}
@@ -326,14 +431,34 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
                   >
                     {n.text}
                   </div>
-                  <div style={{ fontSize: 9.5, color: 'var(--ink-faint)', marginTop: 2 }}>
-                    {new Date(n.erstellt_am).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                  {uebersetzung && (
+                    <div style={{ maxWidth: '75%', fontSize: 12, fontStyle: 'italic', color: 'var(--ink-faint)', marginTop: 2 }}>
+                      {uebersetzung}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                    <span style={{ fontSize: 9.5, color: 'var(--ink-faint)' }}>
+                      {new Date(n.erstellt_am).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    {!uebersetzung && (
+                      <button
+                        onClick={() => nachrichtUebersetzen(n)}
+                        disabled={uebersetztWird === n.id}
+                        title={`Nach ${SPRACHEN.find((s) => s.code === zielsprache)?.label ?? zielsprache} übersetzen`}
+                        style={{ all: 'unset', cursor: 'pointer', fontSize: 10, color: 'var(--ink-faint)' }}
+                      >
+                        {uebersetztWird === n.id ? '…' : '🌐 übersetzen'}
+                      </button>
+                    )}
                   </div>
                 </div>
               )
             })}
             <div ref={listeEndeRef} />
           </div>
+          {uebersetzungsFehler && (
+            <p style={{ fontSize: 11.5, color: 'var(--red)', padding: '0 14px', margin: 0 }}>{uebersetzungsFehler}</p>
+          )}
           <form onSubmit={senden} style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--glass-border)' }}>
             <input
               style={{ ...eingabeStil, flex: 1 }}
@@ -345,9 +470,9 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
           </form>
         </div>
         <p className="footnote">
-          Nachrichten bleiben hier dauerhaft gespeichert, statt in WhatsApp zu verschwinden. Live-Übersetzung und eine
-          automatische KI-To-Do-Liste aus dem Gesprächsverlauf sind als Ausbaustufe geplant, sobald ein Übersetzungs-/
-          KI-Dienst angebunden ist.
+          Nachrichten bleiben hier dauerhaft gespeichert, statt in WhatsApp zu verschwinden. Über „🌐 übersetzen" wird
+          jede Nachricht live in die oben gewählte Sprache übersetzt (DeepL), und „🤖 KI-To-Dos vorschlagen" liest den
+          bisherigen Verlauf und schlägt Aufgaben vor, die du vor der Übernahme prüfen und auswählen kannst (Claude).
         </p>
       </div>
 
@@ -400,6 +525,51 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
               style={{ position: 'absolute', bottom: 8, right: 8, width: '30%', borderRadius: 8, border: '1px solid rgba(243,239,226,.3)' }}
             />
           </div>
+        </div>
+      )}
+    {(vorschlaegeLaden || vorschlaege !== null || vorschlaegeFehler) && (
+        <div style={{ ...karteStil, position: 'fixed', top: 80, right: 24, zIndex: 60, padding: 16, width: 340, maxHeight: '70vh', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>KI-To-Do-Vorschläge</span>
+            <button
+              onClick={() => { setVorschlaege(null); setVorschlaegeFehler(null) }}
+              style={{ all: 'unset', cursor: 'pointer', fontSize: 12, color: 'var(--ink-faint)' }}
+            >
+              ✕
+            </button>
+          </div>
+          {vorschlaegeLaden && <p style={{ fontSize: 12.5, color: 'var(--ink-faint)' }}>Claude liest den Gesprächsverlauf …</p>}
+          {vorschlaegeFehler && <p style={{ fontSize: 12.5, color: 'var(--red)' }}>{vorschlaegeFehler}</p>}
+          {vorschlaege && vorschlaege.length === 0 && (
+            <p style={{ fontSize: 12.5, color: 'var(--ink-faint)' }}>Keine konkreten Aufgaben im bisherigen Gespräch gefunden.</p>
+          )}
+          {vorschlaege && vorschlaege.length > 0 && (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                {vorschlaege.map((v, i) => (
+                  <label key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12.5, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={ausgewaehlteVorschlaege.has(i)}
+                      onChange={() => vorschlagUmschalten(i)}
+                      style={{ marginTop: 2 }}
+                    />
+                    <span>
+                      <strong>{v.titel}</strong>
+                      {v.beschreibung && <span style={{ display: 'block', color: 'var(--ink-faint)', fontSize: 11.5 }}>{v.beschreibung}</span>}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <button
+                onClick={vorschlaegeUebernehmen}
+                disabled={ausgewaehlteVorschlaege.size === 0 || uebernahmeLaeuft}
+                style={{ ...knopfStil, width: '100%' }}
+              >
+                {uebernahmeLaeuft ? 'Übernehme …' : `${ausgewaehlteVorschlaege.size} Aufgabe(n) übernehmen`}
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
