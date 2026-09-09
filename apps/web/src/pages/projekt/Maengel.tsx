@@ -12,6 +12,7 @@ type Mangel = {
   frist: string | null
   grundriss_x: number | null
   grundriss_y: number | null
+  fotos: { url: string }[]
 }
 
 type Gewerk = { id: string; name: string }
@@ -27,6 +28,31 @@ const statusLabel: Record<Mangel['status'], string> = {
   in_bearbeitung: 'In Bearbeitung',
   behoben: 'Behoben',
   abgenommen: 'Abgenommen',
+}
+
+// Foto + KI-Ersteinschätzung am Mangel (Konzept Abschnitt 8.1/10) - die
+// web-taugliche Variante der "AR-Mängeleinschätzung" ohne AR-Kamera-Tracking
+// (das bleibt laut Entscheidung vom 09.09.2026 der künftigen nativen
+// Mobile-App vorbehalten, siehe Konzept Abschnitt 18). Ein Foto am Mangel
+// hochladen und dazu eine unverbindliche KI-Ersteinschätzung anfordern,
+// analog zum bestehenden Muster im Bautagebuch.
+type MangelEinschaetzung = 'unkritisch' | 'beobachten' | 'fachkundig_pruefen_lassen'
+type MangelFotoErgebnis = {
+  vermutete_art: string
+  einschaetzung: MangelEinschaetzung
+  zusammenfassung: string
+  empfehlung: string
+}
+
+const mangelEinschaetzungLabel: Record<MangelEinschaetzung, string> = {
+  unkritisch: 'Unkritisch',
+  beobachten: 'Beobachten',
+  fachkundig_pruefen_lassen: 'Fachkundig prüfen lassen',
+}
+const mangelEinschaetzungFarbe: Record<MangelEinschaetzung, string> = {
+  unkritisch: 'var(--ink-faint)',
+  beobachten: 'var(--orange-text)',
+  fachkundig_pruefen_lassen: 'var(--red)',
 }
 
 type Ansicht = 'liste' | 'grundriss'
@@ -48,6 +74,12 @@ export default function Maengel({ projektId, istEigentuemer }: { projektId: stri
   const [gewerke, setGewerke] = useState<Gewerk[]>([])
   const [gewerkId, setGewerkId] = useState('')
   const [frist, setFrist] = useState('')
+  const [fotoDateien, setFotoDateien] = useState<File[]>([])
+
+  const [einschaetzungenByFoto, setEinschaetzungenByFoto] = useState<Map<string, MangelFotoErgebnis>>(new Map())
+  const [ladendeFotos, setLadendeFotos] = useState<Set<string>>(new Set())
+  const [hochladendeMangelIds, setHochladendeMangelIds] = useState<Set<string>>(new Set())
+  const [einschaetzungFehler, setEinschaetzungFehler] = useState<string | null>(null)
 
   const [ansicht, setAnsicht] = useState<Ansicht>('liste')
   const [grundrissUrl, setGrundrissUrl] = useState<string | null>(null)
@@ -62,12 +94,30 @@ export default function Maengel({ projektId, istEigentuemer }: { projektId: stri
     setLadeStatus('laedt')
     const { data, error } = await supabase
       .from('maengel')
-      .select('id, titel, beschreibung, dringlichkeit, status, zustaendiges_gewerk, frist, grundriss_x, grundriss_y')
+      .select('id, titel, beschreibung, dringlichkeit, status, zustaendiges_gewerk, frist, grundriss_x, grundriss_y, fotos')
       .eq('projekt_id', projektId)
       .order('erstellt_am', { ascending: false })
 
     if (error) { setLadeStatus('fehler'); return }
-    setMaengel(data ?? [])
+    const geladeneMaengel = (data ?? []) as Mangel[]
+    setMaengel(geladeneMaengel)
+
+    const mangelIds = geladeneMaengel.map((m) => m.id)
+    if (mangelIds.length > 0) {
+      const { data: einschaetzungenData } = await supabase
+        .from('mangel_ki_einschaetzungen')
+        .select('mangel_id, foto_url, ergebnis, erstellt_am')
+        .in('mangel_id', mangelIds)
+        .order('erstellt_am', { ascending: false })
+      const neueMap = new Map<string, MangelFotoErgebnis>()
+      for (const e of (einschaetzungenData ?? []) as Array<{ foto_url: string; ergebnis: MangelFotoErgebnis }>) {
+        if (!neueMap.has(e.foto_url)) neueMap.set(e.foto_url, e.ergebnis)
+      }
+      setEinschaetzungenByFoto(neueMap)
+    } else {
+      setEinschaetzungenByFoto(new Map())
+    }
+
     setLadeStatus('bereit')
   }
 
@@ -83,8 +133,26 @@ export default function Maengel({ projektId, istEigentuemer }: { projektId: stri
     })
   }, [projektId])
 
+  async function fotosHochladen(dateien: File[]): Promise<{ url: string }[]> {
+    const hochgeladeneFotos: { url: string }[] = []
+    for (const datei of dateien) {
+      const endung = datei.name.split('.').pop() || 'jpg'
+      const pfad = `${projektId}/${crypto.randomUUID()}.${endung}`
+      const { error: uploadFehler } = await supabase.storage.from('maengel-fotos').upload(pfad, await datei.arrayBuffer(), {
+        contentType: datei.type || 'application/octet-stream',
+        cacheControl: '3600',
+        upsert: false,
+      })
+      if (!uploadFehler) {
+        hochgeladeneFotos.push({ url: supabase.storage.from('maengel-fotos').getPublicUrl(pfad).data.publicUrl })
+      }
+    }
+    return hochgeladeneFotos
+  }
+
   async function anlegen(e: FormEvent) {
     e.preventDefault()
+    const hochgeladeneFotos = await fotosHochladen(fotoDateien)
     const { data: { user } } = await supabase.auth.getUser()
     const gewerkName = gewerke.find((g) => g.id === gewerkId)?.name ?? null
     const { error } = await supabase.from('maengel').insert({
@@ -95,12 +163,45 @@ export default function Maengel({ projektId, istEigentuemer }: { projektId: stri
       zustaendiges_gewerk: gewerkName,
       frist: frist || null,
       gemeldet_von: user?.id,
+      fotos: hochgeladeneFotos,
     })
     if (!error) {
-      setTitel(''); setBeschreibung(''); setDringlichkeit('mittel'); setGewerkId(''); setFrist('')
+      setTitel(''); setBeschreibung(''); setDringlichkeit('mittel'); setGewerkId(''); setFrist(''); setFotoDateien([])
       setZeigeFormular(false)
       laden()
     }
+  }
+
+  async function fotoZuMangelHinzufuegen(mangel: Mangel, datei: File) {
+    setHochladendeMangelIds((v) => new Set(v).add(mangel.id))
+    const [neuesFoto] = await fotosHochladen([datei])
+    if (neuesFoto) {
+      await supabase.from('maengel').update({ fotos: [...mangel.fotos, neuesFoto] }).eq('id', mangel.id)
+      await laden()
+    }
+    setHochladendeMangelIds((v) => {
+      const neu = new Set(v)
+      neu.delete(mangel.id)
+      return neu
+    })
+  }
+
+  async function einschaetzungAnfordern(mangelId: string, fotoUrl: string) {
+    setEinschaetzungFehler(null)
+    setLadendeFotos((v) => new Set(v).add(fotoUrl))
+    const { data, error } = await supabase.functions.invoke('foto-einschaetzung', {
+      body: { mangelId, fotoUrl },
+    })
+    setLadendeFotos((v) => {
+      const neu = new Set(v)
+      neu.delete(fotoUrl)
+      return neu
+    })
+    if (error || data?.fehler) {
+      setEinschaetzungFehler('KI-Ersteinschätzung konnte nicht abgerufen werden.')
+      return
+    }
+    setEinschaetzungenByFoto((v) => new Map(v).set(fotoUrl, data.ergebnis as MangelFotoErgebnis))
   }
 
   async function statusAendern(id: string, status: Mangel['status']) {
@@ -226,6 +327,16 @@ export default function Maengel({ projektId, istEigentuemer }: { projektId: stri
                   <input type="date" style={eingabeStil} value={frist} onChange={(e) => setFrist(e.target.value)} />
                 </label>
               </div>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+                Fotos (optional – dazu lässt sich später eine unverbindliche KI-Ersteinschätzung anfordern)
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  style={eingabeStil}
+                  onChange={(e) => setFotoDateien(Array.from(e.target.files ?? []))}
+                />
+              </label>
               <button type="submit" style={knopfStil}>Mangel speichern</button>
             </form>
           )}
@@ -273,9 +384,67 @@ export default function Maengel({ projektId, istEigentuemer }: { projektId: stri
                     <option key={wert} value={wert}>{label}</option>
                   ))}
                 </select>
+
+                {m.fotos.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                    {m.fotos.map((foto) => {
+                      const ergebnis = einschaetzungenByFoto.get(foto.url)
+                      const laedt = ladendeFotos.has(foto.url)
+                      return (
+                        <div key={foto.url} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                            <img
+                              src={foto.url}
+                              alt="Mangelfoto"
+                              style={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 8, background: 'var(--surface)' }}
+                            />
+                            {!ergebnis && (
+                              <button
+                                type="button"
+                                onClick={() => einschaetzungAnfordern(m.id, foto.url)}
+                                disabled={laedt}
+                                style={{ ...knopfStil, fontSize: 12, padding: '6px 10px', alignSelf: 'center' }}
+                              >
+                                {laedt ? 'Wird analysiert …' : '🤖 KI-Ersteinschätzung anfordern'}
+                              </button>
+                            )}
+                          </div>
+                          {ergebnis && (
+                            <div style={{ ...karteStil, padding: '10px 14px', background: 'rgba(230,150,40,.06)', border: '1px solid rgba(230,150,40,.25)' }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--orange-text)', marginBottom: 6 }}>
+                                ⚠ Unverbindliche KI-Ersteinschätzung – keine fachliche/statische Bewertung, ersetzt keine Begutachtung vor Ort
+                              </div>
+                              {ergebnis.vermutete_art && (
+                                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>{ergebnis.vermutete_art}</div>
+                              )}
+                              {ergebnis.zusammenfassung && <div style={{ fontSize: 13, marginBottom: 4 }}>{ergebnis.zusammenfassung}</div>}
+                              <div style={{ fontSize: 12.5, display: 'flex', gap: 6, marginBottom: ergebnis.empfehlung ? 4 : 0 }}>
+                                <span style={{ color: mangelEinschaetzungFarbe[ergebnis.einschaetzung], fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                  {mangelEinschaetzungLabel[ergebnis.einschaetzung]}:
+                                </span>
+                              </div>
+                              {ergebnis.empfehlung && <div style={{ fontSize: 12.5, color: 'var(--ink-dim)' }}>{ergebnis.empfehlung}</div>}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink-faint)', marginTop: 10, cursor: 'pointer' }}>
+                  {hochladendeMangelIds.has(m.id) ? 'Foto wird hochgeladen …' : '📷 Foto hinzufügen'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={hochladendeMangelIds.has(m.id)}
+                    style={{ display: 'none' }}
+                    onChange={(e) => { const d = e.target.files?.[0]; if (d) fotoZuMangelHinzufuegen(m, d) }}
+                  />
+                </label>
               </div>
             ))}
           </div>
+          {einschaetzungFehler && <p style={{ fontSize: 12.5, color: 'var(--red)', marginTop: 12 }}>{einschaetzungFehler}</p>}
         </>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

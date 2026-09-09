@@ -60,6 +60,7 @@ export default function Abnahme({ projektId }: { projektId: string }) {
   const [mangelDringlichkeit, setMangelDringlichkeit] = useState<Dringlichkeit>('mittel')
   const [mangelGewerkId, setMangelGewerkId] = useState('')
   const [mangelFrist, setMangelFrist] = useState('')
+  const [mangelFotoDateien, setMangelFotoDateien] = useState<File[]>([])
   const [gewerke, setGewerke] = useState<Gewerk[]>([])
 
   async function laden() {
@@ -152,6 +153,24 @@ export default function Abnahme({ projektId }: { projektId: string }) {
     e.preventDefault()
     if (!mangelTitel.trim()) return
     setMangelSpeichert(true)
+
+    // Fotos landen im selben Bucket wie in der Mängel-Ansicht (Maengel.tsx) -
+    // dort lässt sich anschließend auch eine unverbindliche KI-
+    // Ersteinschätzung dazu anfordern.
+    const hochgeladeneFotos: { url: string }[] = []
+    for (const datei of mangelFotoDateien) {
+      const endung = datei.name.split('.').pop() || 'jpg'
+      const pfad = `${projektId}/${crypto.randomUUID()}.${endung}`
+      const { error: uploadFehler } = await supabase.storage.from('maengel-fotos').upload(pfad, await datei.arrayBuffer(), {
+        contentType: datei.type || 'application/octet-stream',
+        cacheControl: '3600',
+        upsert: false,
+      })
+      if (!uploadFehler) {
+        hochgeladeneFotos.push({ url: supabase.storage.from('maengel-fotos').getPublicUrl(pfad).data.publicUrl })
+      }
+    }
+
     const { data: { user } } = await supabase.auth.getUser()
     const gewerkName = gewerke.find((g) => g.id === mangelGewerkId)?.name ?? null
     const { error } = await supabase.from('maengel').insert({
@@ -162,6 +181,7 @@ export default function Abnahme({ projektId }: { projektId: string }) {
       zustaendiges_gewerk: gewerkName,
       frist: mangelFrist || null,
       gemeldet_von: user?.id,
+      fotos: hochgeladeneFotos,
     })
     if (!error) {
       setMangelTitel('')
@@ -169,6 +189,7 @@ export default function Abnahme({ projektId }: { projektId: string }) {
       setMangelDringlichkeit('mittel')
       setMangelGewerkId('')
       setMangelFrist('')
+      setMangelFotoDateien([])
       setZeigeMangelFormular(false)
     }
     setMangelSpeichert(false)
@@ -226,6 +247,16 @@ export default function Abnahme({ projektId }: { projektId: string }) {
               <input type="date" style={eingabeStil} value={mangelFrist} onChange={(e) => setMangelFrist(e.target.value)} />
             </label>
           </div>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+            Fotos (optional – dazu lässt sich in der Mängel-Ansicht eine unverbindliche KI-Ersteinschätzung anfordern)
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              style={eingabeStil}
+              onChange={(e) => setMangelFotoDateien(Array.from(e.target.files ?? []))}
+            />
+          </label>
           <div>
             <button type="submit" style={knopfStil} disabled={mangelSpeichert || !mangelTitel.trim()}>
               {mangelSpeichert ? 'Speichert …' : 'Mangel speichern'}
