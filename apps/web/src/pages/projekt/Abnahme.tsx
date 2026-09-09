@@ -15,6 +15,8 @@ type Abnahme = {
 }
 
 type RestMangel = { id: string; abnahme_id: string; titel: string; status: string; frist: string | null }
+type Gewerk = { id: string; name: string }
+type Dringlichkeit = 'kritisch' | 'mittel' | 'gering'
 
 const ergebnisLabel: Record<Ergebnis, string> = {
   mangelfrei: 'Mängelfrei abgenommen',
@@ -46,6 +48,20 @@ export default function Abnahme({ projektId }: { projektId: string }) {
   const [notizen, setNotizen] = useState('')
   const [restmangelZeilen, setRestmangelZeilen] = useState<{ titel: string; frist: string }[]>([{ titel: '', frist: '' }])
 
+  // Eigenständiges Schnellformular für einen "normalen" Mangel, unabhängig
+  // von einem konkreten Abnahmeprotokoll - z. B. wenn bei der Begehung
+  // etwas auffällt, das nichts mit dem gerade dokumentierten Abnahme-
+  // Ergebnis zu tun hat. Landet wie jeder andere Mangel in der normalen
+  // Mängelliste/Grundriss-Ansicht (abnahme_id bleibt leer).
+  const [zeigeMangelFormular, setZeigeMangelFormular] = useState(false)
+  const [mangelSpeichert, setMangelSpeichert] = useState(false)
+  const [mangelTitel, setMangelTitel] = useState('')
+  const [mangelBeschreibung, setMangelBeschreibung] = useState('')
+  const [mangelDringlichkeit, setMangelDringlichkeit] = useState<Dringlichkeit>('mittel')
+  const [mangelGewerkId, setMangelGewerkId] = useState('')
+  const [mangelFrist, setMangelFrist] = useState('')
+  const [gewerke, setGewerke] = useState<Gewerk[]>([])
+
   async function laden() {
     setLadeStatus('laedt')
     const { data, error } = await supabase
@@ -73,6 +89,10 @@ export default function Abnahme({ projektId }: { projektId: string }) {
   }
 
   useEffect(() => { laden() }, [projektId])
+
+  useEffect(() => {
+    supabase.from('gewerke').select('id, name').order('sortierung').then(({ data }) => setGewerke(data ?? []))
+  }, [])
 
   function restmangelZeileAendern(index: number, feld: 'titel' | 'frist', wert: string) {
     setRestmangelZeilen((zeilen) => zeilen.map((z, i) => (i === index ? { ...z, [feld]: wert } : z)))
@@ -128,17 +148,91 @@ export default function Abnahme({ projektId }: { projektId: string }) {
     setSpeichert(false)
   }
 
+  async function mangelAnlegen(e: FormEvent) {
+    e.preventDefault()
+    if (!mangelTitel.trim()) return
+    setMangelSpeichert(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    const gewerkName = gewerke.find((g) => g.id === mangelGewerkId)?.name ?? null
+    const { error } = await supabase.from('maengel').insert({
+      projekt_id: projektId,
+      titel: mangelTitel.trim(),
+      beschreibung: mangelBeschreibung.trim() || null,
+      dringlichkeit: mangelDringlichkeit,
+      zustaendiges_gewerk: gewerkName,
+      frist: mangelFrist || null,
+      gemeldet_von: user?.id,
+    })
+    if (!error) {
+      setMangelTitel('')
+      setMangelBeschreibung('')
+      setMangelDringlichkeit('mittel')
+      setMangelGewerkId('')
+      setMangelFrist('')
+      setZeigeMangelFormular(false)
+    }
+    setMangelSpeichert(false)
+  }
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
         <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)', maxWidth: 480 }}>
           Digitales Abnahmeprotokoll: Ergebnis, Teilnehmer:innen und Restmängel mit Frist festhalten, statt es formlos
           im Gespräch zu belassen. Restmängel landen automatisch auch in der normalen Mängelliste.
         </p>
-        <button style={knopfStil} onClick={() => setZeigeFormular((v) => !v)}>
-          {zeigeFormular ? 'Abbrechen' : '+ Abnahme protokollieren'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button style={knopfSekundaerStil} onClick={() => setZeigeMangelFormular((v) => !v)}>
+            {zeigeMangelFormular ? 'Abbrechen' : '+ Mangel hinzufügen'}
+          </button>
+          <button style={knopfStil} onClick={() => setZeigeFormular((v) => !v)}>
+            {zeigeFormular ? 'Abbrechen' : '+ Abnahme protokollieren'}
+          </button>
+        </div>
       </div>
+
+      {zeigeMangelFormular && (
+        <form onSubmit={mangelAnlegen} style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+            Titel
+            <input style={eingabeStil} value={mangelTitel} onChange={(e) => setMangelTitel(e.target.value)} required autoFocus />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+            Beschreibung (optional)
+            <textarea
+              style={{ ...eingabeStil, minHeight: 60, fontFamily: 'inherit' }}
+              value={mangelBeschreibung}
+              onChange={(e) => setMangelBeschreibung(e.target.value)}
+            />
+          </label>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', flex: '1 1 160px' }}>
+              Dringlichkeit
+              <select style={eingabeStil} value={mangelDringlichkeit} onChange={(e) => setMangelDringlichkeit(e.target.value as Dringlichkeit)}>
+                <option value="kritisch">Kritisch</option>
+                <option value="mittel">Mittel</option>
+                <option value="gering">Gering</option>
+              </select>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', flex: '1 1 180px' }}>
+              Zuständiges Gewerk (optional)
+              <select style={eingabeStil} value={mangelGewerkId} onChange={(e) => setMangelGewerkId(e.target.value)}>
+                <option value="">– kein Gewerk –</option>
+                {gewerke.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', flex: '1 1 160px' }}>
+              Frist (optional)
+              <input type="date" style={eingabeStil} value={mangelFrist} onChange={(e) => setMangelFrist(e.target.value)} />
+            </label>
+          </div>
+          <div>
+            <button type="submit" style={knopfStil} disabled={mangelSpeichert || !mangelTitel.trim()}>
+              {mangelSpeichert ? 'Speichert …' : 'Mangel speichern'}
+            </button>
+          </div>
+        </form>
+      )}
 
       {zeigeFormular && (
         <form onSubmit={anlegen} style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
