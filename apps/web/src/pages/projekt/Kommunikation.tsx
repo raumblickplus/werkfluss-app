@@ -27,6 +27,7 @@ type Signal =
   | { typ: 'aufnahme_start_ok'; besprechungId: string }
   | { typ: 'aufnahme_abgelehnt' }
   | { typ: 'aufnahme_ende' }
+  | { typ: 'untertitel'; text: string; sprache: string }
 
 const ICE_SERVER = { urls: 'stun:stun.l.google.com:19302' }
 const KLINGEL_TIMEOUT_MS = 30000
@@ -43,6 +44,43 @@ const SPRACHEN: { code: string; label: string }[] = [
   { code: 'FR', label: 'Französisch' },
   { code: 'ES', label: 'Spanisch' },
 ]
+
+// Für die Spracherkennung (Web Speech API) braucht es BCP-47-Locale-Codes
+// statt der DeepL-Sprachcodes aus SPRACHEN oben.
+const SPRACHE_ZU_LOCALE: Record<string, string> = {
+  DE: 'de-DE', EN: 'en-US', TR: 'tr-TR', PL: 'pl-PL', RO: 'ro-RO',
+  RU: 'ru-RU', UK: 'uk-UA', IT: 'it-IT', FR: 'fr-FR', ES: 'es-ES',
+}
+
+// Live-Untertitel in Video-Baubesprechungen (Konzept Abschnitt 8.3): läuft
+// bewusst über die im Browser eingebaute Spracherkennung (Web Speech API,
+// aktuell nur Chrome/Edge) statt über einen eigenen Streaming-STT-Dienst -
+// realistisch als "erste Ausbaustufe", das Konzept selbst nennt einen
+// etablierten Anbieter (z. B. DeepL Voice for Meetings) als Zielbild für
+// eine spätere, robustere Integration. Jede Seite erkennt nur die eigene
+// Sprache und sendet den erkannten Text roh über den bestehenden Anruf-
+// Signalkanal; die EMPFANGENDE Seite übersetzt ihn (über die bestehende
+// "uebersetzen"-Edge-Function/DeepL) in die von ihr gewählte Sprache - so
+// kann jede Person unabhängig wählen, in welcher Sprache sie mitliest.
+type SpracherkennungErgebnis = { transcript: string }
+type SpracherkennungTreffer = { isFinal: boolean; length: number; [index: number]: SpracherkennungErgebnis }
+type SpracherkennungEvent = { results: SpracherkennungTreffer[] }
+interface Spracherkennung extends EventTarget {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  start(): void
+  stop(): void
+  onresult: ((ev: SpracherkennungEvent) => void) | null
+  onerror: ((ev: unknown) => void) | null
+  onend: (() => void) | null
+}
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => Spracherkennung
+    webkitSpeechRecognition?: new () => Spracherkennung
+  }
+}
 
 type AufgabenVorschlag = { titel: string; beschreibung?: string }
 
@@ -111,6 +149,19 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const aufnahmeChunksRef = useRef<Blob[]>([])
   const aufnahmeMimeTypRef = useRef<string>('audio/webm')
+
+  // Live-Untertitel: "untertitelAktiv" steuert nur, ob MEINE Sprache erkannt
+  // und an die Gegenseite gesendet wird - eingehende Untertitel werden
+  // unabhängig davon immer angezeigt, sobald die Gegenseite welche sendet.
+  const untertitelUnterstuetzt = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+  const [untertitelAktiv, setUntertitelAktiv] = useState(false)
+  const [ichSpreche, setIchSpreche] = useState('DE')
+  const [untertitelZielsprache, setUntertitelZielsprache] = useState('DE')
+  const [aktuellerUntertitel, setAktuellerUntertitel] = useState<string | null>(null)
+  const spracherkennungRef = useRef<Spracherkennung | null>(null)
+  const untertitelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const untertitelZielspracheRef = useRef(untertitelZielsprache)
+  useEffect(() => { untertitelZielspracheRef.current = untertitelZielsprache }, [untertitelZielsprache])
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
@@ -249,6 +300,79 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
     setVorschlaege(null)
   }
 
+  // ---- Live-Untertitel (Web Speech API + bestehende "uebersetzen"-Function) ----
+
+  function untertitelZeigen(text: string) {
+    setAktuellerUntertitel(text)
+    if (untertitelTimeoutRef.current) clearTimeout(untertitelTimeoutRef.current)
+    untertitelTimeoutRef.current = setTimeout(() => setAktuellerUntertitel(null), 6000)
+  }
+
+  async function untertitelEmpfangen(text: string, quellSprache: string) {
+    const ziel = untertitelZielspracheRef.current
+    if (quellSprache === ziel) {
+      untertitelZeigen(text)
+      return
+    }
+    const { data, error } = await supabase.functions.invoke('uebersetzen', { body: { text, zielsprache: ziel } })
+    if (error || data?.fehler) { untertitelZeigen(text); return }
+    untertitelZeigen(data.text ?? text)
+  }
+
+  function untertitelStarten(sprache?: string) {
+    const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!Ctor) return
+    const aktuelleSprache = sprache ?? ichSpreche
+    const erkennung = new Ctor()
+    erkennung.lang = SPRACHE_ZU_LOCALE[aktuelleSprache] ?? 'de-DE'
+    erkennung.continuous = true
+    erkennung.interimResults = false
+    erkennung.onresult = (ev) => {
+      const letzterTreffer = ev.results[ev.results.length - 1]
+      if (!letzterTreffer?.isFinal) return
+      const erkannterText = letzterTreffer[0]?.transcript?.trim()
+      if (!erkannterText) return
+      callChannelRef.current?.send({
+        type: 'broadcast', event: 'signal',
+        payload: { typ: 'untertitel', text: erkannterText, sprache: aktuelleSprache },
+      })
+    }
+    erkennung.onerror = () => { /* z.B. Sprechpause - onend übernimmt den Neustart */ }
+    erkennung.onend = () => {
+      // Die Web Speech API beendet die Erkennung nach einer Sprechpause von
+      // selbst - solange Untertitel noch gewünscht sind, direkt neu starten.
+      if (spracherkennungRef.current === erkennung) {
+        try { erkennung.start() } catch { /* läuft schon */ }
+      }
+    }
+    spracherkennungRef.current = erkennung
+    try { erkennung.start() } catch { /* ignore */ }
+  }
+
+  function untertitelStoppen() {
+    const erkennung = spracherkennungRef.current
+    spracherkennungRef.current = null
+    if (erkennung) { try { erkennung.stop() } catch { /* ignore */ } }
+  }
+
+  function untertitelUmschalten() {
+    if (untertitelAktiv) {
+      untertitelStoppen()
+      setUntertitelAktiv(false)
+    } else {
+      untertitelStarten()
+      setUntertitelAktiv(true)
+    }
+  }
+
+  function meineSpracheAendern(neueSprache: string) {
+    setIchSpreche(neueSprache)
+    if (untertitelAktiv) {
+      untertitelStoppen()
+      untertitelStarten(neueSprache)
+    }
+  }
+
   // ---- Videotelefonie ----
 
   function aufraeumen() {
@@ -258,6 +382,10 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
+    untertitelStoppen()
+    setUntertitelAktiv(false)
+    setAktuellerUntertitel(null)
+    if (untertitelTimeoutRef.current) { clearTimeout(untertitelTimeoutRef.current); untertitelTimeoutRef.current = null }
     localStreamRef.current?.getTracks().forEach((t) => t.stop())
     localStreamRef.current = null
     pcRef.current?.close()
@@ -439,6 +567,8 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
         setAufnahmeFehler('Die Gegenseite hat die Aufzeichnung abgelehnt.')
       } else if (payload.typ === 'aufnahme_ende') {
         aufnahmeBeenden(false)
+      } else if (payload.typ === 'untertitel') {
+        untertitelEmpfangen(payload.text, payload.sprache)
       }
     })
 
@@ -490,6 +620,8 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
         setAufnahmeFehler('Die Gegenseite hat die Aufzeichnung abgelehnt.')
       } else if (payload.typ === 'aufnahme_ende') {
         aufnahmeBeenden(false)
+      } else if (payload.typ === 'untertitel') {
+        untertitelEmpfangen(payload.text, payload.sprache)
       }
     })
 
@@ -742,9 +874,53 @@ export default function Kommunikation({ projektId }: { projektId: string }) {
               autoPlay playsInline muted
               style={{ position: 'absolute', bottom: 8, right: 8, width: '30%', borderRadius: 8, border: '1px solid rgba(243,239,226,.3)' }}
             />
+            {aktuellerUntertitel && (
+              <div
+                style={{
+                  position: 'absolute', left: 8, right: 8, bottom: 8,
+                  background: 'rgba(0,0,0,.7)', color: '#fff', fontSize: 12.5, lineHeight: 1.4,
+                  padding: '6px 10px', borderRadius: 8, textAlign: 'center',
+                }}
+              >
+                {aktuellerUntertitel}
+              </div>
+            )}
           </div>
           {anrufStatus === 'verbunden' && (
             <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>Untertitel für mich in</span>
+                  <select
+                    value={untertitelZielsprache}
+                    onChange={(e) => setUntertitelZielsprache(e.target.value)}
+                    style={{ ...eingabeStil, padding: '2px 6px', fontSize: 10.5, width: 'auto' }}
+                  >
+                    {SPRACHEN.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
+                  </select>
+                </div>
+                {untertitelUnterstuetzt ? (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button onClick={untertitelUmschalten} style={{ ...knopfSekundaerStil, fontSize: 11.5, padding: '6px 10px' }}>
+                      {untertitelAktiv ? '💬 Meine Sprache: Untertitel aus' : '💬 Meine Sprache als Untertitel senden'}
+                    </button>
+                    {untertitelAktiv && (
+                      <select
+                        value={ichSpreche}
+                        onChange={(e) => meineSpracheAendern(e.target.value)}
+                        style={{ ...eingabeStil, padding: '2px 6px', fontSize: 10.5, width: 'auto' }}
+                        title="Sprache, in der ich spreche"
+                      >
+                        {SPRACHEN.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
+                      </select>
+                    )}
+                  </div>
+                ) : (
+                  <span style={{ fontSize: 10, color: 'var(--ink-faint)' }}>
+                    Untertitel senden geht nur in Chrome/Edge - Empfangen funktioniert überall.
+                  </span>
+                )}
+              </div>
               {aufnahmeStatus === 'keine' && (
                 <button onClick={aufnahmeAnfragen} style={{ ...knopfSekundaerStil, fontSize: 11.5, padding: '6px 10px' }}>
                   ⏺ Aufzeichnen &amp; protokollieren
