@@ -9,14 +9,24 @@ export type Firma = { id: string; name: string; rolle: string }
 // über firma_mitglieder wie alle professionellen Rollen.
 export type BauherrProjekt = { id: string; name: string; adresse: string | null }
 
+// Hersteller/Lieferant (0024_hersteller_lieferanten.sql): eigener, selbst
+// registrierbarer Account-Typ ohne Projektbindung - stellt einen
+// projektübergreifenden Produktkatalog bereit statt an einem einzelnen
+// Bauprojekt mitzuwirken. Analog zu Firma, aber bewusst als eigener Typ
+// gehalten (andere Rollen, andere Oberfläche).
+export type Hersteller = { id: string; name: string; rolle: string }
+
 type AuthContextValue = {
   session: Session | null
   ladeStatus: 'laedt' | 'bereit'
   firmen: Firma[]
   aktivFirma: Firma | null
   bauherrProjekte: BauherrProjekt[]
+  herstellerListe: Hersteller[]
+  aktivHersteller: Hersteller | null
   setAktivFirmaId: (id: string) => void
   ladeFirmen: () => Promise<void>
+  ladeHersteller: () => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -28,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [firmen, setFirmen] = useState<Firma[]>([])
   const [aktivFirmaId, setAktivFirmaId] = useState<string | null>(null)
   const [bauherrProjekte, setBauherrProjekte] = useState<BauherrProjekt[]>([])
+  const [herstellerListe, setHerstellerListe] = useState<Hersteller[]>([])
 
   async function ladeFirmen() {
     const { data, error } = await supabase
@@ -80,6 +91,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setBauherrProjekte(geladen)
   }
 
+  async function ladeHersteller() {
+    const { data, error } = await supabase
+      .from('hersteller_mitglieder')
+      .select('rolle, hersteller(id, name)')
+
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error('Hersteller konnten nicht geladen werden:', error.message)
+      return
+    }
+
+    const geladen: Hersteller[] = (data ?? [])
+      .map((eintrag) => {
+        const h = eintrag.hersteller as unknown as { id: string; name: string } | null
+        if (!h) return null
+        return { id: h.id, name: h.name, rolle: eintrag.rolle as string }
+      })
+      .filter((h): h is Hersteller => h !== null)
+
+    setHerstellerListe(geladen)
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
@@ -97,15 +130,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (session) {
       ladeFirmen()
       ladeBauherrProjekte(session.user.id)
+      ladeHersteller()
     } else {
       setFirmen([])
       setAktivFirmaId(null)
       setBauherrProjekte([])
+      setHerstellerListe([])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session])
 
   const aktivFirma = firmen.find((f) => f.id === aktivFirmaId) ?? null
+  const aktivHersteller = herstellerListe[0] ?? null
 
   async function signOut() {
     await supabase.auth.signOut()
@@ -113,7 +149,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, ladeStatus, firmen, aktivFirma, bauherrProjekte, setAktivFirmaId, ladeFirmen, signOut }}
+      value={{
+        session,
+        ladeStatus,
+        firmen,
+        aktivFirma,
+        bauherrProjekte,
+        herstellerListe,
+        aktivHersteller,
+        setAktivFirmaId,
+        ladeFirmen,
+        ladeHersteller,
+        signOut,
+      }}
     >
       {children}
     </AuthContext.Provider>

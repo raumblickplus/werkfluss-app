@@ -312,23 +312,58 @@ function MaengelMelden({ projektId }: { projektId: string }) {
 }
 
 type Muster = { id: string; name: string; kategorie: string | null; bild_url: string | null; notiz: string | null }
+type HerstellerProdukt = {
+  id: string
+  name: string
+  kategorie: string | null
+  bild_url: string | null
+  musterbestellbar: boolean
+  hersteller: { name: string } | null
+}
 
 function ProjektmappeLesend({ projektId }: { projektId: string }) {
+  const { session } = useAuth()
   const [muster, setMuster] = useState<Muster[]>([])
+  const [katalog, setKatalog] = useState<HerstellerProdukt[]>([])
+  const [bestellt, setBestellt] = useState<Set<string>>(new Set())
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
 
   useEffect(() => {
     setLadeStatus('laedt')
-    supabase
-      .from('projektmappe_muster')
-      .select('id, name, kategorie, bild_url, notiz')
-      .eq('projekt_id', projektId)
-      .order('erstellt_am', { ascending: false })
-      .then(({ data }) => {
-        setMuster((data ?? []) as Muster[])
-        setLadeStatus('bereit')
-      })
+    Promise.all([
+      supabase
+        .from('projektmappe_muster')
+        .select('id, name, kategorie, bild_url, notiz')
+        .eq('projekt_id', projektId)
+        .order('erstellt_am', { ascending: false }),
+      supabase
+        .from('hersteller_produkte')
+        .select('id, name, kategorie, bild_url, musterbestellbar, hersteller(name)')
+        .eq('aktiv', true)
+        .order('erstellt_am', { ascending: false }),
+    ]).then(([musterRes, katalogRes]) => {
+      setMuster((musterRes.data ?? []) as Muster[])
+      setKatalog((katalogRes.data ?? []) as unknown as HerstellerProdukt[])
+      setLadeStatus('bereit')
+    })
   }, [projektId])
+
+  async function musterBestellen(p: HerstellerProdukt) {
+    if (!session) return
+    setBestellt((prev) => new Set(prev).add(p.id))
+    const { error } = await supabase.from('musterbestellungen').insert({
+      produkt_id: p.id,
+      projekt_id: projektId,
+      bestellt_von: session.user.id,
+    })
+    if (error) {
+      setBestellt((prev) => {
+        const kopie = new Set(prev)
+        kopie.delete(p.id)
+        return kopie
+      })
+    }
+  }
 
   const sektionen = useMemo(() => {
     const gruppen = new Map<string, Muster[]>()
@@ -341,30 +376,63 @@ function ProjektmappeLesend({ projektId }: { projektId: string }) {
   }, [muster])
 
   if (ladeStatus === 'laedt') return <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>
-  if (muster.length === 0) {
-    return <p style={{ color: 'var(--ink-faint)' }}>Noch keine Materialmuster/Moodboard-Einträge für dieses Projekt.</p>
-  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {sektionen.map(([titel, eintraege]) => (
-        <div key={titel}>
-          <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-faint)', marginBottom: 10 }}>
-            {titel}
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+      {muster.length === 0 ? (
+        <p style={{ color: 'var(--ink-faint)' }}>Noch keine Materialmuster/Moodboard-Einträge für dieses Projekt.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {sektionen.map(([titel, eintraege]) => (
+            <div key={titel}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-faint)', marginBottom: 10 }}>
+                {titel}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
+                {eintraege.map((m) => (
+                  <div key={m.id} style={{ ...karteStil, padding: 12 }}>
+                    {m.bild_url && (
+                      <img src={m.bild_url} alt={m.name} style={{ width: '100%', height: 110, objectFit: 'cover', borderRadius: 8, marginBottom: 8 }} />
+                    )}
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{m.name}</div>
+                    {m.notiz && <div style={{ fontSize: 12, color: 'var(--ink-faint)', marginTop: 3 }}>{m.notiz}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-faint)', marginBottom: 10 }}>
+          Herstellerkatalog – kostenfrei Muster bestellen
+        </div>
+        {katalog.length === 0 ? (
+          <p style={{ color: 'var(--ink-faint)', fontSize: 13 }}>Noch keine Hersteller im Katalog.</p>
+        ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
-            {eintraege.map((m) => (
-              <div key={m.id} style={{ ...karteStil, padding: 12 }}>
-                {m.bild_url && (
-                  <img src={m.bild_url} alt={m.name} style={{ width: '100%', height: 110, objectFit: 'cover', borderRadius: 8, marginBottom: 8 }} />
+            {katalog.map((p) => (
+              <div key={p.id} style={{ ...karteStil, padding: 12 }}>
+                {p.bild_url && (
+                  <img src={p.bild_url} alt={p.name} style={{ width: '100%', height: 110, objectFit: 'cover', borderRadius: 8, marginBottom: 8 }} />
                 )}
-                <div style={{ fontWeight: 700, fontSize: 13 }}>{m.name}</div>
-                {m.notiz && <div style={{ fontSize: 12, color: 'var(--ink-faint)', marginTop: 3 }}>{m.notiz}</div>}
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{p.name}</div>
+                {p.hersteller?.name && <div style={{ fontSize: 12, color: 'var(--ink-faint)', marginTop: 3 }}>{p.hersteller.name}</div>}
+                {p.musterbestellbar && (
+                  <button
+                    style={{ ...knopfSekundaerStil, width: '100%', marginTop: 8, fontSize: 12 }}
+                    disabled={bestellt.has(p.id)}
+                    onClick={() => musterBestellen(p)}
+                  >
+                    {bestellt.has(p.id) ? 'Muster angefragt ✓' : 'Muster bestellen'}
+                  </button>
+                )}
               </div>
             ))}
           </div>
-        </div>
-      ))}
+        )}
+      </div>
     </div>
   )
 }

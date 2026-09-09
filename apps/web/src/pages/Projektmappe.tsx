@@ -11,6 +11,15 @@ type Muster = {
   bild_url: string | null
   notiz: string | null
 }
+type HerstellerProdukt = {
+  id: string
+  name: string
+  kategorie: string | null
+  beschreibung: string | null
+  bild_url: string | null
+  musterbestellbar: boolean
+  hersteller: { name: string } | null
+}
 
 // Eigenständige, dunkle Bühne statt normaler App-Seite (siehe .mappe-* in
 // index.css) – bewusst kein <AppShell>, damit Sidebar/Topbar komplett
@@ -43,12 +52,17 @@ const dunkelKnopfSekundaer = {
   color: 'var(--ink)',
 } as const
 
+type Ansicht = 'muster' | 'katalog'
+
 export default function Projektmappe() {
   const navigate = useNavigate()
-  const { aktivFirma } = useAuth()
+  const { aktivFirma, session } = useAuth()
   const [projekte, setProjekte] = useState<Projekt[]>([])
   const [aktivesProjektId, setAktivesProjektId] = useState<string | null>(null)
+  const [ansicht, setAnsicht] = useState<Ansicht>('muster')
   const [muster, setMuster] = useState<Muster[]>([])
+  const [katalog, setKatalog] = useState<HerstellerProdukt[]>([])
+  const [bestellt, setBestellt] = useState<Set<string>>(new Set())
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
 
   const [formOffen, setFormOffen] = useState(false)
@@ -91,6 +105,38 @@ export default function Projektmappe() {
     }
     ladeMuster()
   }, [aktivesProjektId])
+
+  // Der Herstellerkatalog ist projektübergreifend (0024_hersteller_lieferanten.sql)
+  // - lädt unabhängig vom aktiven Projekt einmal, die Musterbestellung
+  // selbst hängt dann am gerade ausgewählten Projekt.
+  useEffect(() => {
+    async function ladeKatalog() {
+      const { data } = await supabase
+        .from('hersteller_produkte')
+        .select('id, name, kategorie, beschreibung, bild_url, musterbestellbar, hersteller(name)')
+        .eq('aktiv', true)
+        .order('erstellt_am', { ascending: false })
+      setKatalog((data ?? []) as unknown as HerstellerProdukt[])
+    }
+    if (ansicht === 'katalog' && katalog.length === 0) ladeKatalog()
+  }, [ansicht, katalog.length])
+
+  async function musterBestellen(p: HerstellerProdukt) {
+    if (!aktivesProjektId || !session) return
+    setBestellt((prev) => new Set(prev).add(p.id))
+    const { error } = await supabase.from('musterbestellungen').insert({
+      produkt_id: p.id,
+      projekt_id: aktivesProjektId,
+      bestellt_von: session.user.id,
+    })
+    if (error) {
+      setBestellt((prev) => {
+        const kopie = new Set(prev)
+        kopie.delete(p.id)
+        return kopie
+      })
+    }
+  }
 
   function formZuruecksetzen() {
     setName('')
@@ -176,65 +222,120 @@ export default function Projektmappe() {
           ) : (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22, flexWrap: 'wrap', gap: 10 }}>
-                <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, margin: 0 }}>Materialmuster</h2>
-                <button style={formOffen ? dunkelKnopfSekundaer : dunkelKnopf} onClick={() => setFormOffen((v) => !v)}>
-                  {formOffen ? 'Abbrechen' : '+ Muster hinzufügen'}
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    style={ansicht === 'muster' ? dunkelKnopf : dunkelKnopfSekundaer}
+                    onClick={() => setAnsicht('muster')}
+                  >
+                    Eigene Muster
+                  </button>
+                  <button
+                    style={ansicht === 'katalog' ? dunkelKnopf : dunkelKnopfSekundaer}
+                    onClick={() => setAnsicht('katalog')}
+                  >
+                    Herstellerkatalog
+                  </button>
+                </div>
+                {ansicht === 'muster' && (
+                  <button style={formOffen ? dunkelKnopfSekundaer : dunkelKnopf} onClick={() => setFormOffen((v) => !v)}>
+                    {formOffen ? 'Abbrechen' : '+ Muster hinzufügen'}
+                  </button>
+                )}
               </div>
 
-              {formOffen && (
-                <form
-                  onSubmit={musterErstellen}
-                  style={{
-                    display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 26, padding: 18,
-                    borderRadius: 18, background: 'rgba(243,239,226,.04)', border: '1px solid rgba(243,239,226,.08)',
-                  }}
-                >
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-                    <input style={dunkelEingabe} value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, z. B. Feinsteinzeug Grau" required />
-                    <input style={dunkelEingabe} value={kategorie} onChange={(e) => setKategorie(e.target.value)} placeholder="Kategorie, z. B. Boden" />
-                    <input style={dunkelEingabe} type="file" accept="image/*" onChange={(e) => setBilddatei(e.target.files?.[0] ?? null)} />
-                  </div>
-                  <textarea
-                    style={{ ...dunkelEingabe, minHeight: 56, resize: 'vertical' }}
-                    value={notiz}
-                    onChange={(e) => setNotiz(e.target.value)}
-                    placeholder="Notiz (optional)"
-                  />
-                  {fehler && <p style={{ margin: 0, fontSize: 12.5, color: '#E8836B' }}>{fehler}</p>}
-                  <div>
-                    <button type="submit" style={dunkelKnopf} disabled={wirdGespeichert || !name.trim()}>
-                      {wirdGespeichert ? 'Speichert …' : 'Hinzufügen'}
-                    </button>
-                  </div>
-                </form>
-              )}
+              {ansicht === 'muster' ? (
+                <>
+                  {formOffen && (
+                    <form
+                      onSubmit={musterErstellen}
+                      style={{
+                        display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 26, padding: 18,
+                        borderRadius: 18, background: 'rgba(243,239,226,.04)', border: '1px solid rgba(243,239,226,.08)',
+                      }}
+                    >
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                        <input style={dunkelEingabe} value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, z. B. Feinsteinzeug Grau" required />
+                        <input style={dunkelEingabe} value={kategorie} onChange={(e) => setKategorie(e.target.value)} placeholder="Kategorie, z. B. Boden" />
+                        <input style={dunkelEingabe} type="file" accept="image/*" onChange={(e) => setBilddatei(e.target.files?.[0] ?? null)} />
+                      </div>
+                      <textarea
+                        style={{ ...dunkelEingabe, minHeight: 56, resize: 'vertical' }}
+                        value={notiz}
+                        onChange={(e) => setNotiz(e.target.value)}
+                        placeholder="Notiz (optional)"
+                      />
+                      {fehler && <p style={{ margin: 0, fontSize: 12.5, color: '#E8836B' }}>{fehler}</p>}
+                      <div>
+                        <button type="submit" style={dunkelKnopf} disabled={wirdGespeichert || !name.trim()}>
+                          {wirdGespeichert ? 'Speichert …' : 'Hinzufügen'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
 
-              {ladeStatus === 'laedt' ? (
-                <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>
-              ) : muster.length === 0 ? (
-                <p style={{ color: 'var(--ink-faint)' }}>Noch keine Materialmuster für dieses Projekt hinterlegt.</p>
-              ) : (
-                <div className="muster-grid">
-                  {muster.map((m) => (
-                    <div key={m.id} className="muster-kachel">
-                      <button className="muster-loeschen" onClick={() => musterLoeschen(m)} title="Entfernen">
-                        ×
-                      </button>
-                      <div className="muster-kachel-bild">
-                        {m.bild_url ? (
-                          <img src={m.bild_url} alt={m.name} />
-                        ) : (
-                          <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Kein Bild</span>
-                        )}
-                      </div>
-                      <div className="muster-kachel-info">
-                        <div className="muster-kachel-name">{m.name}</div>
-                        {m.kategorie && <div className="muster-kachel-kategorie">{m.kategorie}</div>}
-                      </div>
+                  {ladeStatus === 'laedt' ? (
+                    <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>
+                  ) : muster.length === 0 ? (
+                    <p style={{ color: 'var(--ink-faint)' }}>Noch keine Materialmuster für dieses Projekt hinterlegt.</p>
+                  ) : (
+                    <div className="muster-grid">
+                      {muster.map((m) => (
+                        <div key={m.id} className="muster-kachel">
+                          <button className="muster-loeschen" onClick={() => musterLoeschen(m)} title="Entfernen">
+                            ×
+                          </button>
+                          <div className="muster-kachel-bild">
+                            {m.bild_url ? (
+                              <img src={m.bild_url} alt={m.name} />
+                            ) : (
+                              <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Kein Bild</span>
+                            )}
+                          </div>
+                          <div className="muster-kachel-info">
+                            <div className="muster-kachel-name">{m.name}</div>
+                            {m.kategorie && <div className="muster-kachel-kategorie">{m.kategorie}</div>}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--ink-faint)' }}>
+                    Muster von Herstellern und Lieferanten – kostenfrei bestellbar für „{aktivesProjekt.name}".
+                  </p>
+                  {katalog.length === 0 ? (
+                    <p style={{ color: 'var(--ink-faint)' }}>Noch keine Hersteller im Katalog.</p>
+                  ) : (
+                    <div className="muster-grid">
+                      {katalog.map((p) => (
+                        <div key={p.id} className="muster-kachel">
+                          <div className="muster-kachel-bild">
+                            {p.bild_url ? (
+                              <img src={p.bild_url} alt={p.name} />
+                            ) : (
+                              <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Kein Bild</span>
+                            )}
+                          </div>
+                          <div className="muster-kachel-info">
+                            <div className="muster-kachel-name">{p.name}</div>
+                            {p.hersteller?.name && <div className="muster-kachel-kategorie">{p.hersteller.name}</div>}
+                          </div>
+                          {p.musterbestellbar && (
+                            <button
+                              style={{ ...dunkelKnopfSekundaer, width: '100%', marginTop: 8 }}
+                              disabled={bestellt.has(p.id)}
+                              onClick={() => musterBestellen(p)}
+                            >
+                              {bestellt.has(p.id) ? 'Muster angefragt ✓' : 'Muster kostenfrei bestellen'}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

@@ -1,7 +1,8 @@
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { useAuth } from './lib/AuthContext'
 import Login from './pages/Login'
-import FirmaAnlegen from './pages/FirmaAnlegen'
+import KontoTypWahl from './pages/KontoTypWahl'
+import HerstellerPortal from './pages/HerstellerPortal'
 import Dashboard from './pages/Dashboard'
 import Projekte from './pages/Projekte'
 import ProjektDetail from './pages/ProjektDetail'
@@ -20,7 +21,7 @@ import Projektmappe from './pages/Projektmappe'
 import Kundenansicht from './pages/Kundenansicht'
 
 export default function App() {
-  const { session, ladeStatus, firmen, bauherrProjekte } = useAuth()
+  const { session, ladeStatus, firmen, bauherrProjekte, herstellerListe } = useAuth()
   const location = useLocation()
 
   // Einladungslinks funktionieren unabhängig vom Anmeldestatus – die Seite
@@ -47,10 +48,14 @@ export default function App() {
   // Eine Person ohne eigene Firma, aber mit mindestens einer Bauherr-
   // Mitgliedschaft (siehe 0021_bauherr_ohne_firma.sql), ist ein privater
   // Bauherr - die bekommt die eigene, stark vereinfachte Kundenansicht
-  // statt der vollen Profi-Oberfläche mit allen Modulen. Wer noch gar
-  // nirgends Mitglied ist, landet wie bisher bei "Firma anlegen".
+  // statt der vollen Profi-Oberfläche mit allen Modulen.
   if (firmen.length === 0 && bauherrProjekte.length > 0) return <Kundenansicht />
-  if (firmen.length === 0) return <FirmaAnlegen />
+  // Ein Hersteller/Lieferant (0024_hersteller_lieferanten.sql) ist ebenso
+  // projektunabhängig und bekommt seine eigene, schlanke Oberfläche statt
+  // der Profi-Ansicht mit Bautagebuch/Ausschreibung/Finanzen etc.
+  if (firmen.length === 0 && herstellerListe.length > 0) return <HerstellerPortal />
+  // Wer noch gar nirgends Mitglied ist, wählt zunächst den Account-Typ.
+  if (firmen.length === 0) return <KontoTypWahl />
 
   return (
     <Routes>
