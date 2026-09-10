@@ -149,7 +149,7 @@ export default function ProjektDetail() {
         />
       )}
       {aktivTab === 'maengel' && <Maengel projektId={id} istEigentuemer={istEigentuemer} />}
-      {aktivTab === 'aufgaben' && <Aufgaben projektId={id} />}
+      {aktivTab === 'aufgaben' && <Aufgaben projektId={id} istEigentuemer={istEigentuemer} />}
       {aktivTab === 'abnahme' && <Abnahme projektId={id} />}
       {aktivTab === 'faelle' && <Faelle projektId={id} istEigentuemer={istEigentuemer} />}
       {aktivTab === 'rechnungen' && istEigentuemer && <Rechnungen projektId={id} />}

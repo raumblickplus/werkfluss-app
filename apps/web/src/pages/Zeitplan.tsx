@@ -349,8 +349,9 @@ export default function Zeitplan() {
 
           <p className="footnote">
             Der Zeitstrahl bildet echte Termine ab: Aufgaben mit Gewerk und Fälligkeitsdatum, je Projekt gruppiert.
-            Terminspannen je Gewerk, Abhängigkeiten zwischen Gewerken, kritischer Pfad und Kalendersync
-            (Apple/Google/Outlook) sind als nächste Ausbaustufe vorgesehen.
+            Abhängigkeiten zwischen einzelnen Aufgaben und ein Terminverschiebungs-Protokoll lassen sich direkt
+            im Tab „Aufgaben“ eines Projekts pflegen. Terminspannen je Gewerk, ein echter kritischer Pfad und
+            Kalendersync (Apple/Google/Outlook) sind als nächste Ausbaustufe vorgesehen.
           </p>
         </>
       )}
