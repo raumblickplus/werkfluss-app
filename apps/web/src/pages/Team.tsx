@@ -17,6 +17,7 @@ type Einladung = {
   id: string
   rolle: string
   abteilung: string | null
+  freigabe_limit_cents: number | null
   status: string
   token: string
   erstellt_am: string
@@ -43,6 +44,7 @@ export default function Team() {
   const [formOffen, setFormOffen] = useState(false)
   const [neueRolle, setNeueRolle] = useState('mitarbeiter')
   const [neueAbteilung, setNeueAbteilung] = useState('')
+  const [neuesFreigabeLimit, setNeuesFreigabeLimit] = useState('')
   const [wirdErstellt, setWirdErstellt] = useState(false)
   const [neuerLink, setNeuerLink] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
@@ -64,7 +66,7 @@ export default function Team() {
       istAdmin
         ? supabase
             .from('firma_einladungen')
-            .select('id, rolle, abteilung, status, token, erstellt_am')
+            .select('id, rolle, abteilung, freigabe_limit_cents, status, token, erstellt_am')
             .eq('firma_id', aktivFirma.id)
             .eq('status', 'offen')
             .order('erstellt_am', { ascending: false })
@@ -88,19 +90,30 @@ export default function Team() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aktivFirma?.id])
 
+  const neueRolleUnbegrenzt = neueRolle === 'inhaber' || neueRolle === 'geschaeftsfuehrung'
+
   async function einladungErstellen() {
     if (!aktivFirma) return
     setWirdErstellt(true)
     setFehler(null)
+    const roh = neuesFreigabeLimit.trim().replace(',', '.')
+    const limitCents = neueRolleUnbegrenzt || roh === '' ? null : Math.round(parseFloat(roh) * 100)
+    if (!neueRolleUnbegrenzt && roh !== '' && Number.isNaN(limitCents)) {
+      setFehler('Freigabelimit bitte als Zahl angeben, z.B. 5000.')
+      setWirdErstellt(false)
+      return
+    }
     const { data, error } = await supabase.rpc('firma_einladung_erstellen', {
       p_firma_id: aktivFirma.id,
       p_rolle: neueRolle,
       p_abteilung: neueAbteilung || null,
+      p_freigabe_limit_cents: limitCents,
     })
     setWirdErstellt(false)
     if (error) { setFehler(error.message); return }
     setNeuerLink(`${window.location.origin}/firma-einladung/${data}`)
     setNeueAbteilung('')
+    setNeuesFreigabeLimit('')
     laden()
   }
 
@@ -191,7 +204,27 @@ export default function Team() {
                   <label>Abteilung (optional)</label>
                   <input style={eingabeStil} value={neueAbteilung} onChange={(e) => setNeueAbteilung(e.target.value)} placeholder="z.B. Buchhaltung" />
                 </div>
+                <div className="field" style={{ flex: 1, minWidth: 160 }}>
+                  <label>Freigabelimit {neueRolleUnbegrenzt ? '' : '(optional)'}</label>
+                  {neueRolleUnbegrenzt ? (
+                    <div style={{ ...eingabeStil, color: 'var(--ink-faint)', display: 'flex', alignItems: 'center' }}>
+                      unbegrenzt (Inhaber/Geschäftsführung)
+                    </div>
+                  ) : (
+                    <input
+                      style={eingabeStil}
+                      value={neuesFreigabeLimit}
+                      onChange={(e) => setNeuesFreigabeLimit(e.target.value)}
+                      placeholder="z.B. 5000 (in €, ohne Limit = kein Auftragsrecht)"
+                    />
+                  )}
+                </div>
               </div>
+              <p style={{ margin: '10px 0 0', fontSize: 11.5, color: 'var(--ink-faint)', lineHeight: 1.5 }}>
+                Es gibt noch keinen automatischen Mail-Versand: Du bekommst gleich einen Link, den du selbst per
+                WhatsApp/E-Mail an die Person schickst. Sobald sie den Link öffnet und sich anmeldet, taucht sie oben
+                bei „Mitglieder" mit genau dieser Rolle, Abteilung und diesem Freigabelimit auf.
+              </p>
               {fehler && <p style={{ color: 'var(--red)', fontSize: 12.5, margin: '4px 0 0' }}>{fehler}</p>}
               <button style={{ ...knopfStil, marginTop: 10 }} disabled={wirdErstellt} onClick={einladungErstellen}>
                 {wirdErstellt ? 'Erstelle Link …' : 'Einladungslink erstellen'}
@@ -310,6 +343,9 @@ export default function Team() {
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--ink-faint)' }}>
                     erstellt {new Date(e.erstellt_am).toLocaleDateString('de-DE')}
+                    {e.rolle !== 'inhaber' && e.rolle !== 'geschaeftsfuehrung' && (
+                      <> · Freigabe: {e.freigabe_limit_cents != null ? `bis ${(e.freigabe_limit_cents / 100).toLocaleString('de-DE')} €` : 'kein Limit hinterlegt'}</>
+                    )}
                   </div>
                 </div>
                 <button style={{ ...knopfSekundaerStil, padding: '7px 12px', fontSize: 11 }} onClick={() => linkKopieren(e.token)}>
