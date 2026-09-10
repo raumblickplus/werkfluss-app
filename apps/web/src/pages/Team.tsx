@@ -140,6 +140,8 @@ export default function Team() {
 
   if (!aktivFirma) return null
 
+  const ohneFreigabe = mitglieder.filter((m) => m.rolle !== 'inhaber' && m.rolle !== 'geschaeftsfuehrung' && m.freigabe_limit_cents == null).length
+
   return (
     <AppShell
       title="Team"
@@ -150,6 +152,28 @@ export default function Team() {
         </button>
       ) : undefined}
     >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 22 }}>
+        <div className="block olive-deep" style={{ gridColumn: 'span 5', minWidth: 220 }}>
+          <div className="block-ticks" />
+          <div className="block-lbl">Team-Mitglieder</div>
+          <div className="block-num" style={{ fontSize: 'clamp(34px, 3.6vw, 56px)' }}>{mitglieder.length}</div>
+          <div className="block-sub">{aktivFirma.name}</div>
+        </div>
+        {istAdmin && (
+          <>
+            <div className={`block ${ohneFreigabe > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 4', minWidth: 200 }}>
+              <div className="block-lbl">Ohne Freigabelimit</div>
+              <div className="block-num" style={{ fontSize: 'clamp(28px, 3vw, 44px)' }}>{ohneFreigabe}</div>
+              <div className="block-sub">{ohneFreigabe > 0 ? 'können keinen Auftrag selbst erteilen' : 'alle Mitglieder abgedeckt'}</div>
+            </div>
+            <div className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              <div className="block-lbl">Offene Einladungen</div>
+              <div className="block-num" style={{ fontSize: 'clamp(28px, 3vw, 44px)' }}>{einladungen.length}</div>
+            </div>
+          </>
+        )}
+      </div>
+
       {formOffen && (
         <div style={{ ...karteStil, marginBottom: 20 }}>
           {!neuerLink ? (

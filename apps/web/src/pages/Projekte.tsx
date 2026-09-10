@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { adresseZuKoordinaten } from '../lib/wetter'
@@ -107,6 +107,13 @@ export default function Projekte() {
     }
   }
 
+  const statusZaehler = useMemo(() => {
+    const z: Record<string, number> = { planung: 0, ausfuehrung: 0, abnahme: 0, abgeschlossen: 0, pausiert: 0 }
+    for (const p of projekte) z[p.status] = (z[p.status] ?? 0) + 1
+    return z
+  }, [projekte])
+  const aktiveProjekte = statusZaehler.ausfuehrung + statusZaehler.abnahme
+
   return (
     <AppShell
       title="Projekte"
@@ -117,6 +124,41 @@ export default function Projekte() {
         </button>
       }
     >
+      {ladeStatus === 'bereit' && projekte.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 22 }}>
+          <div className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
+            <div className="block-ticks" />
+            <div className="block-lbl">Projekte gesamt</div>
+            <div className="block-num" style={{ fontSize: 'clamp(34px, 3.6vw, 56px)' }}>{projekte.length}</div>
+            <div className="block-sub">{aktiveProjekte} in Ausführung/Abnahme</div>
+          </div>
+          <div className={`block ${statusZaehler.pausiert > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
+            <div className="block-lbl">{statusZaehler.pausiert > 0 ? 'Pausierte Projekte' : 'Abgeschlossen'}</div>
+            <div className="block-num" style={{ fontSize: 'clamp(28px, 3vw, 44px)' }}>
+              {statusZaehler.pausiert > 0 ? statusZaehler.pausiert : statusZaehler.abgeschlossen}
+            </div>
+            <div className="block-sub">{statusZaehler.pausiert > 0 ? 'brauchen einen Blick, warum sie stehen' : 'erfolgreich abgeschlossen'}</div>
+          </div>
+
+          <div className="block mustard" style={{ gridColumn: 'span 3', minWidth: 150 }}>
+            <div className="block-lbl">In Planung</div>
+            <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{statusZaehler.planung}</div>
+          </div>
+          <div className="block olive" style={{ gridColumn: 'span 3', minWidth: 150 }}>
+            <div className="block-lbl">In Ausführung</div>
+            <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{statusZaehler.ausfuehrung}</div>
+          </div>
+          <div className="block cream" style={{ gridColumn: 'span 3', minWidth: 150 }}>
+            <div className="block-lbl">Abnahme</div>
+            <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{statusZaehler.abnahme}</div>
+          </div>
+          <div className="block dark" style={{ gridColumn: 'span 3', minWidth: 150 }}>
+            <div className="block-lbl">Abgeschlossen</div>
+            <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{statusZaehler.abgeschlossen}</div>
+          </div>
+        </div>
+      )}
+
       {zeigeFormular && (
         <form onSubmit={projektAnlegen} style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>

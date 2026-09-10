@@ -417,7 +417,7 @@ export default function Dashboard() {
           <p className="footnote">
             Echter Kalender (Termine, Zeitstrahl je Projekt) und Wetterdaten je Baustellenadresse folgen,
             sobald Zeitplan als eigenes Modul angebunden ist – aktuell zeigt das Wetter deinen aktuellen
-            Standort. Freigabekompetenzen/BWA folgen mit der Buchhaltung.
+            Standort. BWA folgt mit der weiteren Buchhaltungstiefe; Freigabekompetenzen lassen sich bereits auf der Team-Seite hinterlegen.
           </p>
         </>
       )}
