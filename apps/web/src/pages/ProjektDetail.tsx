@@ -19,10 +19,11 @@ import TechnikHub from './projekt/TechnikHub'
 import Stundenzettel from './projekt/Stundenzettel'
 import Dokumente from './projekt/Dokumente'
 import Leistungsphasen from './projekt/Leistungsphasen'
+import Bedenkenanmeldungen from './projekt/Bedenkenanmeldungen'
 import { projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
 type Projekt = ProjektDetails & { firma_id: string; breitengrad: number | null; laengengrad: number | null }
-type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'faelle' | 'rechnungen' | 'foerdermittel' | 'genehmigungen' | 'technik' | 'stundenzettel' | 'dokumente' | 'leistungsphasen'
+type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'faelle' | 'rechnungen' | 'foerdermittel' | 'genehmigungen' | 'technik' | 'stundenzettel' | 'dokumente' | 'leistungsphasen' | 'bedenken'
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'uebersicht', label: 'Übersicht' },
@@ -41,6 +42,7 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'stundenzettel', label: 'Stundenzettel' },
   { key: 'dokumente', label: 'Pläne & Dokumente' },
   { key: 'leistungsphasen', label: 'Leistungsphasen' },
+  { key: 'bedenken', label: 'Bedenkenanmeldung' },
 ]
 
 const PROJEKT_SPALTEN =
@@ -159,6 +161,7 @@ export default function ProjektDetail() {
       {aktivTab === 'stundenzettel' && <Stundenzettel projektId={id} />}
       {aktivTab === 'dokumente' && <Dokumente projektId={id} />}
       {aktivTab === 'leistungsphasen' && <Leistungsphasen projektId={id} istEigentuemer={istEigentuemer} />}
+      {aktivTab === 'bedenken' && <Bedenkenanmeldungen projektId={id} istEigentuemer={istEigentuemer} />}
     </AppShell>
   )
 }
