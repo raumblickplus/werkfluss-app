@@ -9,6 +9,13 @@ type Projekt = { id: string; name: string; status: string }
 type Aufgabe = { id: string; titel: string; gewerk: string | null; faellig_am: string | null; status: string; projekt_id: string }
 type Mangel = { id: string; titel: string; dringlichkeit: 'kritisch' | 'mittel' | 'gering'; status: string; frist: string | null; projekt_id: string }
 type Rechnung = { id: string; rechnungsnummer: string; summe_netto_cents: number; status: string; faellig_am: string | null; projekt_id: string }
+type Abnahme = { id: string; datum: string; ergebnis: 'mangelfrei' | 'mit_maengeln' | 'verweigert'; gewaehrleistungsfrist_jahre: number; projekt_id: string }
+
+function gewaehrleistungBis(datum: string, jahre: number): Date {
+  const d = new Date(datum)
+  d.setFullYear(d.getFullYear() + jahre)
+  return d
+}
 type WetterArt = 'sonne' | 'teilweise_bewoelkt' | 'bewoelkt' | 'regen' | 'schnee' | 'gewitter' | 'nebel'
 type WetterDaten = { temperatur: number; art: WetterArt }
 
@@ -150,6 +157,7 @@ export default function Dashboard() {
   const [aufgaben, setAufgaben] = useState<Aufgabe[]>([])
   const [maengel, setMaengel] = useState<Mangel[]>([])
   const [rechnungen, setRechnungen] = useState<Rechnung[]>([])
+  const [abnahmen, setAbnahmen] = useState<Abnahme[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
 
   useEffect(() => {
@@ -189,7 +197,7 @@ export default function Dashboard() {
 
   const laden = useCallback(async () => {
     setLadeStatus('laedt')
-    const [{ data: pData }, { data: aData }, { data: mData }, { data: rData }] = await Promise.all([
+    const [{ data: pData }, { data: aData }, { data: mData }, { data: rData }, { data: abData }] = await Promise.all([
       supabase.from('projekte').select('id, name, status'),
       supabase
         .from('aufgaben')
@@ -206,11 +214,16 @@ export default function Dashboard() {
         .select('id, rechnungsnummer, summe_netto_cents, status, faellig_am, projekt_id')
         .in('status', ['offen', 'ueberfaellig'])
         .order('faellig_am', { ascending: true, nullsFirst: false }),
+      supabase
+        .from('abnahmen')
+        .select('id, datum, ergebnis, gewaehrleistungsfrist_jahre, projekt_id')
+        .neq('ergebnis', 'verweigert'),
     ])
     setProjekte((pData ?? []) as Projekt[])
     setAufgaben((aData ?? []) as Aufgabe[])
     setMaengel((mData ?? []) as Mangel[])
     setRechnungen((rData ?? []) as Rechnung[])
+    setAbnahmen((abData ?? []) as Abnahme[])
     setLadeStatus('bereit')
   }, [])
 
@@ -232,6 +245,17 @@ export default function Dashboard() {
   const dringendeMaengel = [...maengel]
     .sort((a, b) => ({ kritisch: 0, mittel: 1, gering: 2 }[a.dringlichkeit] - { kritisch: 0, mittel: 1, gering: 2 }[b.dringlichkeit]))
     .slice(0, 6)
+
+  // Gewährleistungsfristen, die in den nächsten 90 Tagen ablaufen oder in
+  // den letzten 30 Tagen abgelaufen sind - danach interessiert das Datum
+  // im Alltag nicht mehr, deshalb keine unbegrenzte Liste.
+  const baldAblaufendeGewaehrleistungen = abnahmen
+    .map((a) => ({ ...a, bis: gewaehrleistungBis(a.datum, a.gewaehrleistungsfrist_jahre) }))
+    .filter((a) => {
+      const tageBisAblauf = Math.round((a.bis.getTime() - jetzt.getTime()) / (1000 * 60 * 60 * 24))
+      return tageBisAblauf <= 90 && tageBisAblauf >= -30
+    })
+    .sort((a, b) => a.bis.getTime() - b.bis.getTime())
 
   return (
     <AppShell title="Dashboard" subtitle={aktivFirma?.name} wide>
@@ -406,6 +430,37 @@ export default function Dashboard() {
                       </div>
                       <span style={pillStil(ueberfaellig ? 'bad' : 'neutral')}>
                         {ueberfaellig ? 'Überfällig' : r.faellig_am ? new Date(r.faellig_am).toLocaleDateString('de-DE') : 'Offen'}
+                      </span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
+              <h3 style={{ fontSize: 14, color: 'var(--ink-faint)', margin: '0 0 10px', fontWeight: 700 }}>
+                Gewährleistungsfristen im Blick
+              </h3>
+              <div style={{ ...karteStil, padding: '8px 10px' }}>
+                {baldAblaufendeGewaehrleistungen.length === 0 && (
+                  <p style={{ padding: 16, color: 'var(--ink-faint)', fontSize: 13.5 }}>Keine Frist läuft in den nächsten 90 Tagen ab.</p>
+                )}
+                {baldAblaufendeGewaehrleistungen.map((a) => {
+                  const abgelaufen = a.bis.getTime() < jetzt.getTime()
+                  return (
+                    <Link
+                      key={a.id}
+                      to={`/projekte/${a.projekt_id}?tab=abnahme`}
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 12px', borderBottom: '1px solid rgba(23,20,14,.08)', textDecoration: 'none', color: 'inherit' }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projektName(a.projekt_id)}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>
+                          Abgenommen {new Date(a.datum).toLocaleDateString('de-DE')} · {a.gewaehrleistungsfrist_jahre} Jahre
+                        </div>
+                      </div>
+                      <span style={pillStil(abgelaufen ? 'bad' : 'warn')}>
+                        {abgelaufen ? 'Abgelaufen' : `bis ${a.bis.toLocaleDateString('de-DE')}`}
                       </span>
                     </Link>
                   )

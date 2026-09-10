@@ -12,6 +12,13 @@ type Abnahme = {
   notizen: string | null
   erstellt_am: string
   bestaetigt_von_name: string | null
+  gewaehrleistungsfrist_jahre: number
+}
+
+function gewaehrleistungBis(datum: string, jahre: number): Date {
+  const d = new Date(datum)
+  d.setFullYear(d.getFullYear() + jahre)
+  return d
 }
 
 type RestMangel = { id: string; abnahme_id: string; titel: string; status: string; frist: string | null }
@@ -47,6 +54,7 @@ export default function Abnahme({ projektId }: { projektId: string }) {
   const [teilnehmer, setTeilnehmer] = useState('')
   const [notizen, setNotizen] = useState('')
   const [restmangelZeilen, setRestmangelZeilen] = useState<{ titel: string; frist: string }[]>([{ titel: '', frist: '' }])
+  const [gewaehrleistungsfristJahre, setGewaehrleistungsfristJahre] = useState(5)
 
   // Eigenständiges Schnellformular für einen "normalen" Mangel, unabhängig
   // von einem konkreten Abnahmeprotokoll - z. B. wenn bei der Begehung
@@ -67,7 +75,7 @@ export default function Abnahme({ projektId }: { projektId: string }) {
     setLadeStatus('laedt')
     const { data, error } = await supabase
       .from('abnahmen')
-      .select('id, datum, ergebnis, teilnehmer, notizen, erstellt_am, profile(vollname)')
+      .select('id, datum, ergebnis, teilnehmer, notizen, erstellt_am, gewaehrleistungsfrist_jahre, profile(vollname)')
       .eq('projekt_id', projektId)
       .order('datum', { ascending: false })
 
@@ -121,6 +129,7 @@ export default function Abnahme({ projektId }: { projektId: string }) {
         teilnehmer: teilnehmer || null,
         notizen: notizen || null,
         bestaetigt_von: user?.id,
+        gewaehrleistungsfrist_jahre: gewaehrleistungsfristJahre,
       })
       .select('id')
       .single()
@@ -143,6 +152,7 @@ export default function Abnahme({ projektId }: { projektId: string }) {
       setTeilnehmer('')
       setNotizen('')
       setRestmangelZeilen([{ titel: '', frist: '' }])
+      setGewaehrleistungsfristJahre(5)
       setZeigeFormular(false)
       laden()
     }
@@ -299,6 +309,22 @@ export default function Abnahme({ projektId }: { projektId: string }) {
             />
           </label>
 
+          {ergebnis !== 'verweigert' && (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', maxWidth: 260 }}>
+              Gewährleistungsfrist
+              <select
+                style={eingabeStil}
+                value={gewaehrleistungsfristJahre}
+                onChange={(e) => setGewaehrleistungsfristJahre(Number(e.target.value))}
+              >
+                <option value={2}>2 Jahre</option>
+                <option value={4}>4 Jahre (üblich bei VOB/B)</option>
+                <option value={5}>5 Jahre (BGB-Regelfall Bauwerke)</option>
+                <option value={10}>10 Jahre</option>
+              </select>
+            </label>
+          )}
+
           {ergebnis !== 'mangelfrei' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <span style={{ fontSize: 13, color: 'var(--ink-dim)', fontWeight: 600 }}>Restmängel</span>
@@ -356,6 +382,11 @@ export default function Abnahme({ projektId }: { projektId: string }) {
                 </span>
                 <span style={pillStil(ergebnisVariante[a.ergebnis])}>{ergebnisLabel[a.ergebnis]}</span>
               </div>
+              {a.ergebnis !== 'verweigert' && (
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-faint)' }}>
+                  Gewährleistung ({a.gewaehrleistungsfrist_jahre} Jahre) bis {gewaehrleistungBis(a.datum, a.gewaehrleistungsfrist_jahre).toLocaleDateString('de-DE')}
+                </p>
+              )}
               {a.teilnehmer && <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-dim)' }}>Teilnehmer:innen: {a.teilnehmer}</p>}
               {a.notizen && <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-dim)' }}>{a.notizen}</p>}
               {zugehoerigeRestmaengel.length > 0 && (
