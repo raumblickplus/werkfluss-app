@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
-import { karteStil, eingabeStil, knopfStil } from './stil'
+import { karteStil, eingabeStil, knopfStil, knopfSekundaerStil } from './stil'
 
 type FirmaDetails = {
   id: string
@@ -34,6 +34,12 @@ export default function Einstellungen() {
   const [passwortStatus, setPasswortStatus] = useState<'bereit' | 'speichert' | 'gespeichert' | 'fehler'>('bereit')
   const [passwortFehler, setPasswortFehler] = useState<string | null>(null)
 
+  // Kalender-Abo
+  const [kalenderToken, setKalenderToken] = useState<string | null>(null)
+  const [kalenderLadeStatus, setKalenderLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
+  const [kalenderErstelltStatus, setKalenderErstelltStatus] = useState<'bereit' | 'erstellt' | 'fehler'>('bereit')
+  const [kalenderKopiert, setKalenderKopiert] = useState<'webcal' | 'https' | null>(null)
+
   useEffect(() => {
     if (!aktivFirma) return
     setFirmaLadeStatus('laedt')
@@ -64,6 +70,21 @@ export default function Einstellungen() {
           setEmail(data.email ?? '')
         }
         setProfilLadeStatus('bereit')
+      })
+  }, [session?.user?.id])
+
+  useEffect(() => {
+    const nutzerId = session?.user?.id
+    if (!nutzerId) return
+    setKalenderLadeStatus('laedt')
+    supabase
+      .from('profile')
+      .select('kalender_token')
+      .eq('id', nutzerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        setKalenderToken(data?.kalender_token ?? null)
+        setKalenderLadeStatus('bereit')
       })
   }, [session?.user?.id])
 
@@ -103,6 +124,36 @@ export default function Einstellungen() {
     setNeuesPasswort(''); setPasswortWiederholen('')
     setPasswortStatus('gespeichert')
     setTimeout(() => setPasswortStatus('bereit'), 2000)
+  }
+
+  async function kalenderAboEinrichten() {
+    const nutzerId = session?.user?.id
+    if (!nutzerId) return
+    const neuerToken = crypto.randomUUID().replace(/-/g, '')
+    setKalenderErstelltStatus('bereit')
+    const { error } = await supabase.from('profile').update({ kalender_token: neuerToken }).eq('id', nutzerId)
+    if (error) { setKalenderErstelltStatus('fehler'); return }
+    setKalenderToken(neuerToken)
+    setKalenderErstelltStatus('erstellt')
+  }
+
+  async function kalenderAboZuruecksetzen() {
+    if (!confirm('Neuen Link erzeugen? Der bisherige Kalender-Abo-Link funktioniert danach nicht mehr, du müsstest das Abo in deinem Kalender neu einrichten.')) return
+    await kalenderAboEinrichten()
+  }
+
+  const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? ''
+  const kalenderHttpsUrl = kalenderToken ? `${supabaseUrl}/functions/v1/kalender-feed?token=${kalenderToken}` : null
+  const kalenderWebcalUrl = kalenderHttpsUrl ? kalenderHttpsUrl.replace(/^https?:\/\//, 'webcal://') : null
+
+  async function kalenderLinkKopieren(url: string, art: 'webcal' | 'https') {
+    try {
+      await navigator.clipboard.writeText(url)
+      setKalenderKopiert(art)
+      setTimeout(() => setKalenderKopiert(null), 2000)
+    } catch {
+      // Zwischenablage evtl. ohne Berechtigung - Link steht trotzdem sichtbar da.
+    }
   }
 
   return (
@@ -204,9 +255,65 @@ export default function Einstellungen() {
         </form>
       </div>
 
+      <h3 style={{ fontSize: 13, color: 'var(--ink-faint)', margin: '0 0 8px', fontWeight: 700 }}>Kalender-Abo</h3>
+      <div style={{ ...karteStil, marginBottom: 24 }}>
+        {kalenderLadeStatus === 'laedt' && <p style={{ color: 'var(--ink-faint)', fontSize: 13 }}>Lädt …</p>}
+        {kalenderLadeStatus === 'bereit' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-faint)' }}>
+              Abonniere deine offenen Aufgaben aus allen deinen Projekten in Apple Kalender, Google Kalender
+              oder Outlook. Das Abo ist einseitig: Aufgaben aus Werkfluss erscheinen in deinem Kalender,
+              Termine aus dem Kalender wandern nicht zurück in Werkfluss.
+            </p>
+            {!kalenderToken && (
+              <div>
+                <button type="button" style={knopfStil} onClick={kalenderAboEinrichten}>
+                  Kalender-Abo einrichten
+                </button>
+                {kalenderErstelltStatus === 'fehler' && (
+                  <p style={{ margin: '8px 0 0', fontSize: 12.5, color: 'var(--red)' }}>Fehler beim Einrichten.</p>
+                )}
+              </div>
+            )}
+            {kalenderToken && kalenderHttpsUrl && kalenderWebcalUrl && (
+              <>
+                <div className="field">
+                  <label>Abo-Link (für Apple Kalender: Link direkt öffnen)</label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <input style={{ ...eingabeStil, flex: 1, minWidth: 220 }} value={kalenderWebcalUrl} readOnly onFocus={(e) => e.target.select()} />
+                    <button type="button" style={knopfSekundaerStil} onClick={() => kalenderLinkKopieren(kalenderWebcalUrl, 'webcal')}>
+                      {kalenderKopiert === 'webcal' ? 'Kopiert ✓' : 'Kopieren'}
+                    </button>
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Abo-Link (für Google Kalender: "Über URL" / Outlook: "Aus dem Internet abonnieren")</label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <input style={{ ...eingabeStil, flex: 1, minWidth: 220 }} value={kalenderHttpsUrl} readOnly onFocus={(e) => e.target.select()} />
+                    <button type="button" style={knopfSekundaerStil} onClick={() => kalenderLinkKopieren(kalenderHttpsUrl, 'https')}>
+                      {kalenderKopiert === 'https' ? 'Kopiert ✓' : 'Kopieren'}
+                    </button>
+                  </div>
+                </div>
+                <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-faint)' }}>
+                  Der Link ist geheim wie ein Passwort - wer ihn hat, sieht deine Aufgabentitel. Weitergeben nur
+                  an dich selbst (z.B. für ein zweites Gerät). Kalender fragen den Link meist alle paar Stunden
+                  neu ab, nicht sofort.
+                </p>
+                <div>
+                  <button type="button" style={knopfSekundaerStil} onClick={kalenderAboZuruecksetzen}>
+                    Neuen Link erzeugen
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       <p className="footnote">
-        Benachrichtigungseinstellungen, Kalender-Sync und Abo-/Rechnungsverwaltung für Werkfluss selbst
-        folgen mit späteren Ausbaustufen.
+        Benachrichtigungseinstellungen und Abo-/Rechnungsverwaltung für Werkfluss selbst folgen mit
+        späteren Ausbaustufen.
       </p>
     </AppShell>
   )
