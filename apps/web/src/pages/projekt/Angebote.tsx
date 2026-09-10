@@ -37,7 +37,7 @@ type LvPosition = {
   status: LvStatus
 }
 
-type KatalogPosition = { gewerk_id: string | null; kurztext: string; einzelpreis_cents: number }
+type KatalogPosition = { id: string; gewerk_id: string | null; kurztext: string; einheit: string | null; einzelpreis_cents: number }
 
 type LvZeile = { lvPositionId: string; kurztext: string; menge: number; einheit: string | null; einzelpreisEuro: string }
 
@@ -86,6 +86,7 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
   const [lvZeilen, setLvZeilen] = useState<LvZeile[]>([])
   const [lvSpeichert, setLvSpeichert] = useState(false)
   const [lvFehler, setLvFehler] = useState<string | null>(null)
+  const [kiZuordnungLaeuft, setKiZuordnungLaeuft] = useState(false)
 
   const [auftragFehler, setAuftragFehler] = useState<string | null>(null)
   const [auftragLaeuft, setAuftragLaeuft] = useState<string | null>(null)
@@ -118,7 +119,7 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
         .eq('projekt_id', projektId)
         .eq('status', 'offen'),
       aktivFirma
-        ? supabase.from('preiskatalog_positionen').select('gewerk_id, kurztext, einzelpreis_cents').eq('firma_id', aktivFirma.id)
+        ? supabase.from('preiskatalog_positionen').select('id, gewerk_id, kurztext, einheit, einzelpreis_cents').eq('firma_id', aktivFirma.id)
         : Promise.resolve({ data: [] as KatalogPosition[] }),
     ])
 
@@ -177,6 +178,54 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
 
   function lvZeilePreisAendern(index: number, wert: string) {
     setLvZeilen((zeilen) => zeilen.map((z, i) => (i === index ? { ...z, einzelpreisEuro: wert } : z)))
+  }
+
+  // KI-gestützte Zuordnung für Positionen, die die exakte Textübereinstimmung
+  // oben nicht gefunden hat (Konzept Abschnitt 8.2/16 Phase 2, "automatisches
+  // Angebot"): LV-Texte und der eigene Preiskatalog sind unabhängig
+  // formuliert, treffen sich nach exakter Normalisierung selten. Schreibt
+  // nichts direkt - füllt nur die (noch leeren) Preisfelder aus den bereits
+  // geladenen, RLS-gelesenen Katalogpreisen, ganz wie die bestehende
+  // Wortgleich-Zuordnung, nur mit KI statt exaktem Textvergleich.
+  const [kiZuordnungFehler, setKiZuordnungFehler] = useState<string | null>(null)
+
+  async function preiseKiZuordnen() {
+    const offeneZeilen = lvZeilen.filter((z) => z.einzelpreisEuro.trim() === '')
+    if (offeneZeilen.length === 0) return
+    const relevanterKatalog = katalog.filter((k) => k.gewerk_id === lvGewerkId || k.gewerk_id === null)
+    if (relevanterKatalog.length === 0) {
+      setKiZuordnungFehler('Für dieses Gewerk liegt noch kein Preiskatalog vor – zuerst unter „Preiskatalog" Positionen anlegen.')
+      return
+    }
+    setKiZuordnungLaeuft(true)
+    setKiZuordnungFehler(null)
+    const { data, error } = await supabase.functions.invoke('preiskatalog-abgleich', {
+      body: {
+        lvPositionen: offeneZeilen.map((z) => ({ id: z.lvPositionId, kurztext: z.kurztext, einheit: z.einheit })),
+        katalogPositionen: relevanterKatalog.map((k) => ({ id: k.id, kurztext: k.kurztext, einheit: k.einheit })),
+      },
+    })
+    setKiZuordnungLaeuft(false)
+    if (error || data?.fehler) {
+      setKiZuordnungFehler(data?.fehler ?? error?.message ?? 'Zuordnung fehlgeschlagen.')
+      return
+    }
+    const katalogById = new Map(relevanterKatalog.map((k) => [k.id, k.einzelpreis_cents]))
+    const zuordnungen = (data?.zuordnungen ?? []) as { lv_position_id: string; katalog_position_id: string }[]
+    let anzahlGefunden = 0
+    setLvZeilen((zeilen) =>
+      zeilen.map((z) => {
+        if (z.einzelpreisEuro.trim() !== '') return z
+        const treffer = zuordnungen.find((zu) => zu.lv_position_id === z.lvPositionId)
+        const preisCents = treffer?.katalog_position_id ? katalogById.get(treffer.katalog_position_id) : undefined
+        if (preisCents == null) return z
+        anzahlGefunden++
+        return { ...z, einzelpreisEuro: (preisCents / 100).toFixed(2).replace('.', ',') }
+      })
+    )
+    if (anzahlGefunden === 0) {
+      setKiZuordnungFehler('Keine passenden Katalogpositionen gefunden – bitte Preise für die restlichen Positionen manuell eintragen.')
+    }
   }
 
   const lvZeilenMitPreis = lvZeilen
@@ -430,9 +479,24 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
                     <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-faint)' }}>Keine offenen Positionen für dieses Gewerk.</p>
                   ) : (
                     <>
-                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-faint)' }}>
-                        Positionen aus dem Leistungsverzeichnis – Preise ggf. anpassen
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-faint)' }}>
+                          Positionen aus dem Leistungsverzeichnis – Preise ggf. anpassen
+                        </div>
+                        {lvZeilen.some((z) => z.einzelpreisEuro.trim() === '') && (
+                          <button
+                            type="button"
+                            style={{ ...knopfSekundaerStil, fontSize: 11, padding: '5px 10px' }}
+                            disabled={kiZuordnungLaeuft}
+                            onClick={preiseKiZuordnen}
+                          >
+                            {kiZuordnungLaeuft ? 'Gleicht ab …' : '✨ Restliche Preise per KI aus Katalog übernehmen'}
+                          </button>
+                        )}
                       </div>
+                      {kiZuordnungFehler && (
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-faint)' }}>{kiZuordnungFehler}</p>
+                      )}
                       {lvZeilen.map((z, i) => (
                         <div key={z.lvPositionId} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                           <span style={{ flex: '2 1 200px', fontSize: 12.5 }}>{z.kurztext}</span>
