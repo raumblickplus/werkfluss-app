@@ -156,7 +156,8 @@ export default function Ausschreibung({ projektId, istEigentuemer }: { projektId
     )
     setUebernahmeLaeuft(false)
     if (error) {
-      setVorschlaegeFehler('Übernahme fehlgeschlagen.')
+      console.error('LV-Vorschläge übernehmen fehlgeschlagen:', error)
+      setVorschlaegeFehler(`Übernahme fehlgeschlagen: ${error.message}`)
       return
     }
     setVorschlaege(null)
