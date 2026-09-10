@@ -348,7 +348,197 @@ export default function Finanzen() {
   )
 }
 
+type DatevEinstellungen = {
+  datev_berater_nr: string | null
+  datev_mandanten_nr: string | null
+  datev_kontenrahmen: 'SKR03' | 'SKR04' | null
+  datev_erloeskonto: string | null
+  datev_debitorenkonto: string | null
+}
+
+type RechnungFuerExport = {
+  id: string
+  rechnungsnummer: string
+  summe_netto_cents: number
+  mwst_satz: number
+  status: Rechnung['status']
+  faellig_am: string | null
+  erstellt_am: string
+  projekte: { name: string; kunde_rechnungsadresse: string | null } | null
+}
+
+// DATEV verlangt Umlaut-freie Textfelder nur in der Praxis zuverlässig, wenn
+// die Datei nicht explizit in Windows-1252 kodiert wird (siehe Hinweis unten,
+// wir exportieren als UTF-8) - deshalb transliterieren wir statt zu riskieren,
+// dass ä/ö/ü/ß beim Import falsch ankommen.
+function transliterieren(text: string): string {
+  return text
+    .split('ä').join('ae').split('ö').join('oe').split('ü').join('ue')
+    .split('Ä').join('Ae').split('Ö').join('Oe').split('Ü').join('Ue')
+    .split('ß').join('ss')
+}
+
+function heuteIsoDatum() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function ersterTagDesMonatsIso() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+// Reduziertes, aber an die offizielle DATEV-„Buchungsstapel"-Schnittstelle
+// (Formatkategorie 21, Formatversion 7) angelehntes EXTF-Format mit den
+// Kernspalten, die für einen Rechnungsausgangs-Stapel gebraucht werden.
+// Wichtig: ohne eigenes Kontenmodell/Bankanbindung buchen wir bewusst
+// vereinfacht auf ein Sammel-Debitorenkonto (Belegfeld 1 = Rechnungsnummer
+// bleibt die eindeutige Zuordnung für die Kanzlei). Vor dem ersten
+// produktiven Einsatz unbedingt mit der Steuerkanzlei/DATEV testen -
+// siehe Konzept Abschnitt 17.
+function datevCsvErzeugen(
+  rechnungen: RechnungFuerExport[],
+  einstellungen: DatevEinstellungen,
+  firmenname: string,
+  vonIso: string,
+  bisIso: string
+): string {
+  const jetzt = new Date()
+  const zeitstempel =
+    `${jetzt.getFullYear()}${String(jetzt.getMonth() + 1).padStart(2, '0')}${String(jetzt.getDate()).padStart(2, '0')}` +
+    `${String(jetzt.getHours()).padStart(2, '0')}${String(jetzt.getMinutes()).padStart(2, '0')}${String(jetzt.getSeconds()).padStart(2, '0')}000`
+  const vonKompakt = vonIso.split('-').join('')
+  const bisKompakt = bisIso.split('-').join('')
+  const wjBeginn = `${vonIso.slice(0, 4)}0101`
+  const bezeichnung = transliterieren(`Werkfluss-Export ${firmenname}`).slice(0, 30)
+  const beraterNr = (einstellungen.datev_berater_nr ?? '').trim()
+  const mandantenNr = (einstellungen.datev_mandanten_nr ?? '').trim()
+
+  const kopfzeile =
+    `"EXTF";700;21;"Buchungsstapel";7;${zeitstempel};;"RE";;;` +
+    `${beraterNr};${mandantenNr};${wjBeginn};4;${vonKompakt};${bisKompakt};"${bezeichnung}";"";1;;0;"EUR"`
+
+  const spaltenzeile =
+    '"Umsatz (ohne Soll/Haben-Kz)";"Soll/Haben-Kennzeichen";"WKZ Umsatz";"Kurs";"Basis-Umsatz";' +
+    '"WKZ Basis-Umsatz";"Konto";"Gegenkonto (ohne BU-Schlüssel)";"BU-Schlüssel";"Belegdatum";' +
+    '"Belegfeld 1";"Belegfeld 2";"Skonto";"Buchungstext"'
+
+  const buchungszeilen = rechnungen.map((r) => {
+    const bruttoCents = Math.round(r.summe_netto_cents * (1 + r.mwst_satz / 100))
+    const umsatz = (bruttoCents / 100).toFixed(2).replace('.', ',')
+    const bezugsdatum = (r.faellig_am ?? r.erstellt_am.slice(0, 10)).slice(0, 10)
+    const [, monat, tag] = bezugsdatum.split('-')
+    const belegdatum = `${tag}${monat}`
+    const kundenName = (r.projekte?.kunde_rechnungsadresse?.split('\n')[0] || r.projekte?.name || 'Unbekannt').trim()
+    const buchungstext = transliterieren(`Rechnung ${r.rechnungsnummer} - ${kundenName}`).slice(0, 60).split('"').join("'")
+    const belegfeld1 = r.rechnungsnummer.slice(0, 36).split('"').join("'")
+    const bu = r.mwst_satz === 19 ? '9' : r.mwst_satz === 7 ? '8' : ''
+
+    return (
+      `${umsatz};"S";"";;;"";${einstellungen.datev_debitorenkonto};${einstellungen.datev_erloeskonto};` +
+      `${bu};${belegdatum};"${belegfeld1}";"";;"${buchungstext}"`
+    )
+  })
+
+  return [kopfzeile, spaltenzeile, ...buchungszeilen].join('\r\n') + '\r\n'
+}
+
 function BuchhaltungTab() {
+  const { aktivFirma } = useAuth()
+  const [einstellungen, setEinstellungen] = useState<DatevEinstellungen | null>(null)
+  const [ladeEinstellungen, setLadeEinstellungen] = useState(true)
+  const [bearbeiteEinstellungen, setBearbeiteEinstellungen] = useState(false)
+  const [beraterNr, setBeraterNr] = useState('')
+  const [mandantenNr, setMandantenNr] = useState('')
+  const [kontenrahmen, setKontenrahmen] = useState<'SKR03' | 'SKR04'>('SKR03')
+  const [erloeskonto, setErloeskonto] = useState('8400')
+  const [debitorenkonto, setDebitorenkonto] = useState('10000')
+  const [speichertEinstellungen, setSpeichertEinstellungen] = useState(false)
+
+  const [exportVon, setExportVon] = useState(ersterTagDesMonatsIso())
+  const [exportBis, setExportBis] = useState(heuteIsoDatum())
+  const [exportLaeuft, setExportLaeuft] = useState(false)
+  const [exportFehler, setExportFehler] = useState<string | null>(null)
+  const [exportHinweis, setExportHinweis] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!aktivFirma) return
+    setLadeEinstellungen(true)
+    supabase
+      .from('firmen')
+      .select('datev_berater_nr, datev_mandanten_nr, datev_kontenrahmen, datev_erloeskonto, datev_debitorenkonto')
+      .eq('id', aktivFirma.id)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          const d = data as DatevEinstellungen
+          setEinstellungen(d)
+          setBeraterNr(d.datev_berater_nr ?? '')
+          setMandantenNr(d.datev_mandanten_nr ?? '')
+          setKontenrahmen(d.datev_kontenrahmen ?? 'SKR03')
+          setErloeskonto(d.datev_erloeskonto ?? '8400')
+          setDebitorenkonto(d.datev_debitorenkonto ?? '10000')
+        }
+        setLadeEinstellungen(false)
+      })
+  }, [aktivFirma?.id])
+
+  async function einstellungenSpeichern() {
+    if (!aktivFirma) return
+    setSpeichertEinstellungen(true)
+    const neu: DatevEinstellungen = {
+      datev_berater_nr: beraterNr.trim() || null,
+      datev_mandanten_nr: mandantenNr.trim() || null,
+      datev_kontenrahmen: kontenrahmen,
+      datev_erloeskonto: erloeskonto.trim() || null,
+      datev_debitorenkonto: debitorenkonto.trim() || null,
+    }
+    const { error } = await supabase.from('firmen').update(neu).eq('id', aktivFirma.id)
+    setSpeichertEinstellungen(false)
+    if (!error) {
+      setEinstellungen(neu)
+      setBearbeiteEinstellungen(false)
+    }
+  }
+
+  async function datevExportErzeugen() {
+    if (!aktivFirma) return
+    if (!einstellungen?.datev_erloeskonto || !einstellungen?.datev_debitorenkonto) {
+      setExportFehler('Bitte zuerst unten die DATEV-Einstellungen ausfüllen (mindestens Erlös- und Debitorenkonto).')
+      return
+    }
+    setExportLaeuft(true)
+    setExportFehler(null)
+    setExportHinweis(null)
+    const { data, error } = await supabase
+      .from('rechnungen_ausgang')
+      .select('id, rechnungsnummer, summe_netto_cents, mwst_satz, status, faellig_am, erstellt_am, projekte(name, kunde_rechnungsadresse)')
+      .neq('status', 'storniert')
+      .gte('erstellt_am', exportVon)
+      .lte('erstellt_am', `${exportBis}T23:59:59`)
+      .order('erstellt_am', { ascending: true })
+    setExportLaeuft(false)
+    if (error) {
+      setExportFehler('Rechnungen konnten nicht geladen werden.')
+      return
+    }
+    const rechnungen = (data ?? []) as unknown as RechnungFuerExport[]
+    if (rechnungen.length === 0) {
+      setExportFehler('Keine Rechnungen im gewählten Zeitraum gefunden.')
+      return
+    }
+    const csv = datevCsvErzeugen(rechnungen, einstellungen, aktivFirma.name, exportVon, exportBis)
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `EXTF_Buchungsstapel_${exportVon.split('-').join('')}_${exportBis.split('-').join('')}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    setExportHinweis(`${rechnungen.length} Rechnung${rechnungen.length === 1 ? '' : 'en'} exportiert und heruntergeladen.`)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={karteStil}>
@@ -356,11 +546,117 @@ function BuchhaltungTab() {
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, margin: '14px 0 10px' }}>Buchhaltung mit Bankanbindung &amp; DATEV</h2>
         <p style={{ margin: 0, fontSize: 14, color: 'var(--ink-dim)', maxWidth: 640, lineHeight: 1.6 }}>
           Die Zahlen aus der Übersicht – Angebote, Aufträge und Rechnungen je Projekt – sind bereits die
-          Grundlage für eine vollständige Buchhaltung. Für den nächsten Ausbauschritt fehlen noch der
-          automatische Zahlungsabgleich über eine Bankanbindung, ein DATEV-Export für die Steuerkanzlei und
-          ein Mahnwesen für überfällige Rechnungen. Weil Zahlungsabwicklung eine eigene Regulierungsfrage ist,
+          Grundlage für eine vollständige Buchhaltung. Der DATEV-Export unten ist ein erster, funktionsfähiger
+          Baustein davon. Der automatische Zahlungsabgleich über eine Bankanbindung und ein Mahnwesen für
+          überfällige Rechnungen fehlen noch – weil Zahlungsabwicklung eine eigene Regulierungsfrage ist,
           planen wir das in Kooperation mit einem lizenzierten Partner, statt es selbst nachzubauen.
         </p>
+      </div>
+
+      <div style={karteStil}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: 0 }}>DATEV-Export (Rechnungsausgang)</h2>
+          <span style={pillStil('warn')}>Erster Entwurf</span>
+        </div>
+        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--ink-dim)', lineHeight: 1.6, maxWidth: 640 }}>
+          Exportiert alle Ausgangsrechnungen im gewählten Zeitraum als DATEV-„Buchungsstapel"-Datei (EXTF-Format)
+          zum Import in die Kanzleisoftware. Ohne eigene Bankanbindung und Kontenmodell buchen wir bewusst
+          vereinfacht auf ein einziges Sammel-Debitorenkonto – die Rechnungsnummer bleibt als Belegfeld 1 die
+          eindeutige Zuordnung für die Kanzlei. <b>Bitte vor dem ersten produktiven Import einmal gemeinsam mit
+          deiner Steuerkanzlei testen</b> – das DATEV-Format hat viele Detailregeln, die sich nur mit einem echten
+          Testimport zuverlässig bestätigen lassen.
+        </p>
+
+        {ladeEinstellungen ? (
+          <p style={{ color: 'var(--ink-faint)', fontSize: 13 }}>Lädt …</p>
+        ) : (
+          <>
+            {!bearbeiteEinstellungen ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'center', marginBottom: 16, fontSize: 12.5, color: 'var(--ink-dim)' }}>
+                <span>Berater-Nr.: <b style={{ color: 'var(--ink)' }}>{einstellungen?.datev_berater_nr || '–'}</b></span>
+                <span>Mandanten-Nr.: <b style={{ color: 'var(--ink)' }}>{einstellungen?.datev_mandanten_nr || '–'}</b></span>
+                <span>Kontenrahmen: <b style={{ color: 'var(--ink)' }}>{einstellungen?.datev_kontenrahmen || '–'}</b></span>
+                <span>Erlöskonto: <b style={{ color: 'var(--ink)' }}>{einstellungen?.datev_erloeskonto || '–'}</b></span>
+                <span>Debitorenkonto: <b style={{ color: 'var(--ink)' }}>{einstellungen?.datev_debitorenkonto || '–'}</b></span>
+                <button
+                  onClick={() => setBearbeiteEinstellungen(true)}
+                  style={{ all: 'unset', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--olive)' }}
+                >
+                  Bearbeiten
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16, padding: 14, borderRadius: 12, border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,.35)' }}>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)', flex: '1 1 160px' }}>
+                    Berater-Nr. (von der Kanzlei)
+                    <input value={beraterNr} onChange={(e) => setBeraterNr(e.target.value)} placeholder="z. B. 123456" />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)', flex: '1 1 160px' }}>
+                    Mandanten-Nr. (von der Kanzlei)
+                    <input value={mandantenNr} onChange={(e) => setMandantenNr(e.target.value)} placeholder="z. B. 1001" />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)', flex: '1 1 140px' }}>
+                    Kontenrahmen
+                    <select
+                      value={kontenrahmen}
+                      onChange={(e) => {
+                        const kr = e.target.value as 'SKR03' | 'SKR04'
+                        setKontenrahmen(kr)
+                        setErloeskonto(kr === 'SKR04' ? '4400' : '8400')
+                      }}
+                    >
+                      <option value="SKR03">SKR03</option>
+                      <option value="SKR04">SKR04</option>
+                    </select>
+                  </label>
+                </div>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)', flex: '1 1 160px' }}>
+                    Erlöskonto (19% USt)
+                    <input value={erloeskonto} onChange={(e) => setErloeskonto(e.target.value)} placeholder="z. B. 8400" />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)', flex: '1 1 160px' }}>
+                    Sammel-Debitorenkonto
+                    <input value={debitorenkonto} onChange={(e) => setDebitorenkonto(e.target.value)} placeholder="z. B. 10000" />
+                  </label>
+                </div>
+                <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-faint)', lineHeight: 1.5 }}>
+                  Diese vier Angaben bekommst du von deiner Steuerkanzlei – sie sorgen dafür, dass die Kanzlei die
+                  Datei überhaupt deinem Mandanten zuordnen kann.
+                </p>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={einstellungenSpeichern} disabled={speichertEinstellungen} style={{ fontSize: 12.5, fontWeight: 700, padding: '7px 14px', borderRadius: 999, cursor: 'pointer', border: 'none', background: 'var(--olive)', color: '#fff' }}>
+                    {speichertEinstellungen ? 'Speichert …' : 'Speichern'}
+                  </button>
+                  <button onClick={() => setBearbeiteEinstellungen(false)} style={{ fontSize: 12.5, fontWeight: 600, padding: '7px 14px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--glass-border)', background: 'transparent' }}>
+                    Abbrechen
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)' }}>
+                Zeitraum von
+                <input type="date" value={exportVon} onChange={(e) => setExportVon(e.target.value)} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)' }}>
+                bis
+                <input type="date" value={exportBis} onChange={(e) => setExportBis(e.target.value)} />
+              </label>
+              <button
+                onClick={datevExportErzeugen}
+                disabled={exportLaeuft}
+                style={{ fontSize: 12.5, fontWeight: 700, padding: '9px 16px', borderRadius: 999, cursor: 'pointer', border: 'none', background: 'var(--olive)', color: '#fff' }}
+              >
+                {exportLaeuft ? 'Erzeugt …' : '⬇ DATEV-Buchungsstapel exportieren'}
+              </button>
+            </div>
+            {exportFehler && <p style={{ margin: '10px 0 0', fontSize: 12.5, color: 'var(--red)' }}>{exportFehler}</p>}
+            {exportHinweis && <p style={{ margin: '10px 0 0', fontSize: 12.5, color: 'var(--olive)' }}>{exportHinweis}</p>}
+          </>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
@@ -369,18 +665,14 @@ function BuchhaltungTab() {
           text="Zahlungseingänge automatisch mit offenen Rechnungen abgleichen, statt sie manuell auf „bezahlt“ zu setzen."
         />
         <BuchhaltungSchritt
-          titel="DATEV-Export"
-          text="Angebote, Aufträge und Rechnungen direkt für die Steuerkanzlei exportieren."
-        />
-        <BuchhaltungSchritt
           titel="Mahnwesen"
           text="Automatische Zahlungserinnerungen und Mahnstufen für überfällige Rechnungen aus der Übersicht."
         />
       </div>
 
       <p className="footnote">
-        Bis diese Anbindung steht, bleibt der Reiter „Übersicht“ die verlässliche Quelle für den aktuellen
-        Zahlungsstatus – auf Basis der Rechnungen, die du je Projekt anlegst und manuell als bezahlt markierst.
+        Bis Bankanbindung und Mahnwesen stehen, bleibt der Reiter „Übersicht“ die verlässliche Quelle für den
+        aktuellen Zahlungsstatus – auf Basis der Rechnungen, die du je Projekt anlegst und manuell als bezahlt markierst.
       </p>
     </div>
   )
