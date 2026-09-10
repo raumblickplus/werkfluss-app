@@ -14,10 +14,11 @@ import Abnahme from './projekt/Abnahme'
 import Rechnungen from './projekt/Rechnungen'
 import Foerdermittel from './projekt/Foerdermittel'
 import Faelle from './projekt/Faelle'
+import Genehmigungen from './projekt/Genehmigungen'
 import { projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
 type Projekt = ProjektDetails & { firma_id: string; breitengrad: number | null; laengengrad: number | null }
-type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'faelle' | 'rechnungen' | 'foerdermittel'
+type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'faelle' | 'rechnungen' | 'foerdermittel' | 'genehmigungen'
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'uebersicht', label: 'Übersicht' },
@@ -31,6 +32,7 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'faelle', label: 'Fälle' },
   { key: 'rechnungen', label: 'Rechnungen' },
   { key: 'foerdermittel', label: 'Fördermittel' },
+  { key: 'genehmigungen', label: 'Genehmigungen' },
 ]
 
 const PROJEKT_SPALTEN =
@@ -144,6 +146,7 @@ export default function ProjektDetail() {
       {aktivTab === 'foerdermittel' && (
         <Foerdermittel projektId={id} istEigentuemer={istEigentuemer} vorhabenart={projekt.vorhabenart} />
       )}
+      {aktivTab === 'genehmigungen' && <Genehmigungen projektId={id} istEigentuemer={istEigentuemer} />}
     </AppShell>
   )
 }
