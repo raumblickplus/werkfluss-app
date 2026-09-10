@@ -11,7 +11,7 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'buchhaltung', label: 'Buchhaltung' },
 ]
 
-type ProjektZeile = { id: string; name: string; status: string }
+type ProjektZeile = { id: string; name: string; status: string; kunde_rechnungsadresse: string | null }
 type Angebot = {
   id: string
   projekt_id: string
@@ -31,6 +31,8 @@ type Rechnung = {
   mwst_satz: number
   status: 'offen' | 'bezahlt' | 'ueberfaellig' | 'storniert'
   faellig_am: string | null
+  mahnstufe: number
+  mahnstufe_gesetzt_am: string | null
 }
 
 const euro = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
@@ -43,6 +45,44 @@ function summeNetto(zeilen: { summe_netto_cents: number }[]) {
 }
 function formatKurz(iso: string) {
   return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })
+}
+
+const mahnstufeLabel: Record<number, string> = {
+  0: 'Keine Mahnung',
+  1: 'Zahlungserinnerung',
+  2: '1. Mahnung',
+  3: '2. Mahnung',
+}
+
+function tageSeit(iso: string): number {
+  const faellig = new Date(iso)
+  const heute = new Date()
+  return Math.max(0, Math.round((heute.getTime() - faellig.getTime()) / (1000 * 60 * 60 * 24)))
+}
+
+function neueFristDatum(tageAbHeute: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + tageAbHeute)
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function mahnschreibenText(
+  firmenname: string,
+  kundenAdresse: string | null,
+  rechnungsnummer: string,
+  betragBrutto: string,
+  faelligAm: string,
+  tageUeberfaellig: number,
+  naechsteStufe: number
+): string {
+  const anschrift = kundenAdresse ? `${kundenAdresse}\n\n` : ''
+  if (naechsteStufe <= 1) {
+    return `${anschrift}Sehr geehrte Damen und Herren,\n\nfuer unsere Rechnung ${rechnungsnummer} ueber ${betragBrutto} mit Faelligkeit am ${faelligAm} konnten wir bislang keinen Zahlungseingang feststellen. Moeglicherweise haben Sie die Zahlung bereits veranlasst - in diesem Fall betrachten Sie dieses Schreiben bitte als gegenstandslos.\n\nSollte dies nicht der Fall sein, bitten wir um Ausgleich bis zum ${neueFristDatum(10)}.\n\nMit freundlichen Gruessen\n${firmenname}`
+  }
+  if (naechsteStufe === 2) {
+    return `${anschrift}Sehr geehrte Damen und Herren,\n\ntrotz unserer Zahlungserinnerung ist die Rechnung ${rechnungsnummer} ueber ${betragBrutto} (faellig seit ${faelligAm}, ${tageUeberfaellig} Tage ueberfaellig) weiterhin offen. Wir mahnen den Betrag hiermit an und bitten um Zahlung bis zum ${neueFristDatum(7)}.\n\nSollte der Ausgleich bereits erfolgt sein, betrachten Sie dieses Schreiben bitte als gegenstandslos.\n\nMit freundlichen Gruessen\n${firmenname}`
+  }
+  return `${anschrift}Sehr geehrte Damen und Herren,\n\nauch nach unserer 1. Mahnung ist die Rechnung ${rechnungsnummer} ueber ${betragBrutto} (faellig seit ${faelligAm}, ${tageUeberfaellig} Tage ueberfaellig) nicht ausgeglichen. Wir setzen Ihnen hiermit eine letzte Frist bis zum ${neueFristDatum(7)}. Nach fruchtlosem Fristablauf behalten wir uns weitere Schritte (z. B. gerichtliches Mahnverfahren) sowie die Geltendmachung von Verzugszinsen und Mahnkosten vor.\n\nMit freundlichen Gruessen\n${firmenname}`
 }
 
 function EuroIcon({ groesse = 38 }: { groesse?: number }) {
@@ -85,12 +125,12 @@ export default function Finanzen() {
   async function laden() {
     setLadeStatus('laedt')
     const [{ data: pData }, { data: anData }, { data: auData }, { data: rData }] = await Promise.all([
-      supabase.from('projekte').select('id, name, status'),
+      supabase.from('projekte').select('id, name, status, kunde_rechnungsadresse'),
       supabase.from('angebote').select('id, projekt_id, gewerk, summe_netto_cents, mwst_satz, status, gueltig_bis'),
       supabase.from('auftraege').select('id, projekt_id, summe_netto_cents, status'),
       supabase
         .from('rechnungen_ausgang')
-        .select('id, projekt_id, rechnungsnummer, typ, summe_netto_cents, mwst_satz, status, faellig_am')
+        .select('id, projekt_id, rechnungsnummer, typ, summe_netto_cents, mwst_satz, status, faellig_am, mahnstufe, mahnstufe_gesetzt_am')
         .order('faellig_am', { ascending: true, nullsFirst: false }),
     ])
     setProjekte((pData ?? []) as ProjektZeile[])
@@ -113,7 +153,30 @@ export default function Finanzen() {
   }, [])
 
   const projektName = (id: string) => projekte.find((p) => p.id === id)?.name ?? 'Unbekanntes Projekt'
+  const projektAdresse = (id: string) => projekte.find((p) => p.id === id)?.kunde_rechnungsadresse ?? null
   const istUeberfaellig = (r: Rechnung) => r.status === 'ueberfaellig' || (r.status === 'offen' && !!r.faellig_am && r.faellig_am < heuteIso)
+
+  const [mahnungOffenFuer, setMahnungOffenFuer] = useState<string | null>(null)
+  const [mahnungKopiert, setMahnungKopiert] = useState(false)
+  const [mahnstufeSpeichert, setMahnstufeSpeichert] = useState(false)
+
+  async function mahnstufeSetzen(rechnungId: string, neueStufe: number) {
+    setMahnstufeSpeichert(true)
+    setRechnungen((prev) => prev.map((r) => (r.id === rechnungId ? { ...r, mahnstufe: neueStufe, mahnstufe_gesetzt_am: heuteIso } : r)))
+    await supabase.from('rechnungen_ausgang').update({ mahnstufe: neueStufe, mahnstufe_gesetzt_am: heuteIso }).eq('id', rechnungId)
+    setMahnstufeSpeichert(false)
+    setMahnungOffenFuer(null)
+    setMahnungKopiert(false)
+  }
+
+  async function mahntextKopieren(text: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setMahnungKopiert(true)
+    } catch {
+      // Zwischenablage evtl. ohne Berechtigung - Text steht trotzdem sichtbar da.
+    }
+  }
 
   const offeneRechnungen = rechnungen.filter((r) => r.status === 'offen' || r.status === 'ueberfaellig')
   const ueberfaelligeRechnungen = offeneRechnungen.filter(istUeberfaellig)
@@ -237,24 +300,80 @@ export default function Finanzen() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {offeneRechnungenSortiert.map((r) => {
                       const ueberf = istUeberfaellig(r)
+                      const naechsteStufe = Math.min(3, r.mahnstufe + 1)
+                      const mahnungOffen = mahnungOffenFuer === r.id
+                      const mahntext = r.faellig_am
+                        ? mahnschreibenText(
+                            aktivFirma?.name ?? '',
+                            projektAdresse(r.projekt_id),
+                            r.rechnungsnummer,
+                            euro.format(brutto(r.summe_netto_cents, r.mwst_satz) / 100),
+                            formatKurz(r.faellig_am),
+                            tageSeit(r.faellig_am),
+                            naechsteStufe
+                          )
+                        : ''
                       return (
-                        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 13, background: 'rgba(255,255,255,.4)', border: '1px solid var(--glass-border)' }}>
-                          <Link to={`/projekte/${r.projekt_id}?tab=rechnungen`} style={{ flex: 1, minWidth: 0, textDecoration: 'none', color: 'var(--ink)' }}>
-                            <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {r.rechnungsnummer} · {euro.format(brutto(r.summe_netto_cents, r.mwst_satz) / 100)}
+                        <div key={r.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 10px', borderRadius: 13, background: 'rgba(255,255,255,.4)', border: '1px solid var(--glass-border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            <Link to={`/projekte/${r.projekt_id}?tab=rechnungen`} style={{ flex: 1, minWidth: 0, textDecoration: 'none', color: 'var(--ink)' }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {r.rechnungsnummer} · {euro.format(brutto(r.summe_netto_cents, r.mwst_satz) / 100)}
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--ink-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {projektName(r.projekt_id)}
+                              </div>
+                            </Link>
+                            {r.faellig_am && <span style={pillStil(ueberf ? 'bad' : 'neutral')}>{formatKurz(r.faellig_am)}</span>}
+                            {r.mahnstufe > 0 && <span style={pillStil('warn')}>{mahnstufeLabel[r.mahnstufe]}</span>}
+                            {ueberf && (
+                              <button
+                                onClick={() => { setMahnungOffenFuer(mahnungOffen ? null : r.id); setMahnungKopiert(false) }}
+                                title="Mahnung vorbereiten"
+                                style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--glass-border)', background: mahnungOffen ? 'var(--olive)' : 'transparent', color: mahnungOffen ? '#fff' : 'var(--orange-text)', whiteSpace: 'nowrap' }}
+                              >
+                                Mahnung
+                              </button>
+                            )}
+                            <button
+                              onClick={() => alsBezahltMarkieren(r.id)}
+                              title="Als bezahlt markieren"
+                              style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--glass-border)', background: 'transparent', color: 'var(--olive)', whiteSpace: 'nowrap' }}
+                            >
+                              Bezahlt ✓
+                            </button>
+                          </div>
+                          {mahnungOffen && r.faellig_am && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10, borderRadius: 10, background: 'rgba(0,0,0,.03)' }}>
+                              <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-faint)' }}>
+                                {tageSeit(r.faellig_am)} Tage überfällig · nächste Stufe: <strong>{mahnstufeLabel[naechsteStufe]}</strong>
+                              </p>
+                              <textarea
+                                readOnly
+                                value={mahntext}
+                                onFocus={(e) => e.target.select()}
+                                style={{ width: '100%', minHeight: 140, fontSize: 12, fontFamily: 'inherit', padding: 8, borderRadius: 8, border: '1px solid var(--glass-border)', resize: 'vertical' }}
+                              />
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => mahntextKopieren(mahntext)}
+                                  style={{ fontSize: 11.5, fontWeight: 700, padding: '6px 12px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--glass-border)', background: 'transparent' }}
+                                >
+                                  {mahnungKopiert ? 'Kopiert ✓' : 'Text kopieren'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => mahnstufeSetzen(r.id, naechsteStufe)}
+                                  disabled={mahnstufeSpeichert}
+                                  style={{ fontSize: 11.5, fontWeight: 700, padding: '6px 12px', borderRadius: 999, cursor: 'pointer', border: 'none', background: 'var(--olive)', color: '#fff' }}
+                                >
+                                  Als verschickt markieren ({mahnstufeLabel[naechsteStufe]})
+                                </button>
+                                <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Versand (E-Mail/Post) erfolgt außerhalb von Werkfluss.</span>
+                              </div>
                             </div>
-                            <div style={{ fontSize: 11, color: 'var(--ink-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {projektName(r.projekt_id)}
-                            </div>
-                          </Link>
-                          {r.faellig_am && <span style={pillStil(ueberf ? 'bad' : 'neutral')}>{formatKurz(r.faellig_am)}</span>}
-                          <button
-                            onClick={() => alsBezahltMarkieren(r.id)}
-                            title="Als bezahlt markieren"
-                            style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--glass-border)', background: 'transparent', color: 'var(--olive)', whiteSpace: 'nowrap' }}
-                          >
-                            Bezahlt ✓
-                          </button>
+                          )}
                         </div>
                       )
                     })}
@@ -664,15 +783,13 @@ function BuchhaltungTab() {
           titel="Bankanbindung"
           text="Zahlungseingänge automatisch mit offenen Rechnungen abgleichen, statt sie manuell auf „bezahlt“ zu setzen."
         />
-        <BuchhaltungSchritt
-          titel="Mahnwesen"
-          text="Automatische Zahlungserinnerungen und Mahnstufen für überfällige Rechnungen aus der Übersicht."
-        />
       </div>
 
       <p className="footnote">
-        Bis Bankanbindung und Mahnwesen stehen, bleibt der Reiter „Übersicht“ die verlässliche Quelle für den
-        aktuellen Zahlungsstatus – auf Basis der Rechnungen, die du je Projekt anlegst und manuell als bezahlt markierst.
+        Mahnwesen ist da: Im Reiter „Übersicht“ lässt sich bei jeder überfälligen Rechnung direkt ein fertiger
+        Mahntext (Zahlungserinnerung, 1. und 2. Mahnung) erzeugen und die Mahnstufe vermerken – der Versand selbst
+        läuft weiterhin über dein eigenes E-Mail-Postfach, bis Werkfluss E-Mails automatisch verschicken kann. Bis
+        die Bankanbindung steht, bleibt „bezahlt“ manuell zu setzen.
       </p>
     </div>
   )
