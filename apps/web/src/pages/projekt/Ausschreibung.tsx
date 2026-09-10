@@ -16,6 +16,8 @@ type LvPosition = {
   status: LvStatus
 }
 
+type LvVorschlag = { kurztext: string; langtext?: string; einheit: string }
+
 const euro = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
 const statusLabel: Record<LvStatus, string> = { offen: 'Offen', angefragt: 'Angefragt', entfallen: 'Entfallen' }
 const statusVariante: Record<LvStatus, 'ok' | 'warn' | 'bad' | 'neutral'> = { offen: 'neutral', angefragt: 'warn', entfallen: 'bad' }
@@ -39,6 +41,14 @@ export default function Ausschreibung({ projektId, istEigentuemer }: { projektId
   const [einzelpreisEuro, setEinzelpreisEuro] = useState('')
   const [speichert, setSpeichert] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
+
+  const [zeigeVorschlaege, setZeigeVorschlaege] = useState(false)
+  const [vorschlagGewerkId, setVorschlagGewerkId] = useState('')
+  const [vorschlaegeLaden, setVorschlaegeLaden] = useState(false)
+  const [vorschlaege, setVorschlaege] = useState<LvVorschlag[] | null>(null)
+  const [ausgewaehlteVorschlaege, setAusgewaehlteVorschlaege] = useState<Set<number>>(new Set())
+  const [vorschlaegeFehler, setVorschlaegeFehler] = useState<string | null>(null)
+  const [uebernahmeLaeuft, setUebernahmeLaeuft] = useState(false)
 
   async function laden() {
     setLadeStatus('laedt')
@@ -102,6 +112,59 @@ export default function Ausschreibung({ projektId, istEigentuemer }: { projektId
     await supabase.from('lv_positionen').delete().eq('id', p.id)
   }
 
+  async function vorschlaegeGenerieren() {
+    if (!vorschlagGewerkId) return
+    setVorschlaegeLaden(true)
+    setVorschlaegeFehler(null)
+    setVorschlaege(null)
+    const { data, error } = await supabase.functions.invoke('lv-vorschlaege', {
+      body: { projektId, gewerkId: vorschlagGewerkId },
+    })
+    setVorschlaegeLaden(false)
+    if (error || data?.fehler) {
+      setVorschlaegeFehler('Vorschläge konnten nicht erstellt werden. Sind die Supabase-Secrets korrekt hinterlegt?')
+      return
+    }
+    const liste = (data.vorschlaege ?? []) as LvVorschlag[]
+    setVorschlaege(liste)
+    setAusgewaehlteVorschlaege(new Set(liste.map((_, i) => i)))
+  }
+
+  function vorschlagUmschalten(index: number) {
+    setAusgewaehlteVorschlaege((prev) => {
+      const naechste = new Set(prev)
+      if (naechste.has(index)) naechste.delete(index)
+      else naechste.add(index)
+      return naechste
+    })
+  }
+
+  async function vorschlaegeUebernehmen() {
+    if (!vorschlaege || ausgewaehlteVorschlaege.size === 0) return
+    setUebernahmeLaeuft(true)
+    const auszuUebernehmen = vorschlaege.filter((_, i) => ausgewaehlteVorschlaege.has(i))
+    let naechstePosition = positionen.reduce((max, p) => Math.max(max, p.position), 0) + 1
+    const { error } = await supabase.from('lv_positionen').insert(
+      auszuUebernehmen.map((v) => ({
+        projekt_id: projektId,
+        gewerk_id: vorschlagGewerkId,
+        position: naechstePosition++,
+        kurztext: v.kurztext,
+        langtext: v.langtext || null,
+        einheit: v.einheit || null,
+      }))
+    )
+    setUebernahmeLaeuft(false)
+    if (error) {
+      setVorschlaegeFehler('Übernahme fehlgeschlagen.')
+      return
+    }
+    setVorschlaege(null)
+    setZeigeVorschlaege(false)
+    setVorschlagGewerkId('')
+    laden()
+  }
+
   const sektionen = useMemo(() => {
     const gruppen = new Map<string, LvPosition[]>()
     for (const p of positionen) {
@@ -131,11 +194,70 @@ export default function Ausschreibung({ projektId, istEigentuemer }: { projektId
             : `${positionen.length} Position${positionen.length === 1 ? '' : 'en'} · geschätzt ${euro.format(summeGesamtCents / 100)} netto`}
         </span>
         {istEigentuemer && (
-          <button style={knopfStil} onClick={() => setZeigeFormular((v) => !v)}>
-            {zeigeFormular ? 'Abbrechen' : '+ Position'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              style={{ ...knopfStil, background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--ink)' }}
+              onClick={() => { setZeigeVorschlaege((v) => !v); setZeigeFormular(false) }}
+            >
+              {zeigeVorschlaege ? 'Abbrechen' : '✨ KI-Vorschläge je Gewerk'}
+            </button>
+            <button style={knopfStil} onClick={() => { setZeigeFormular((v) => !v); setZeigeVorschlaege(false) }}>
+              {zeigeFormular ? 'Abbrechen' : '+ Position'}
+            </button>
+          </div>
         )}
       </div>
+
+      {istEigentuemer && zeigeVorschlaege && (
+        <div style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-dim)', lineHeight: 1.6 }}>
+            Wähle ein Gewerk – die KI schlägt typische Positionen dafür vor (angelehnt an übliche Ausschreibungssprache, Mengen trägst du danach selbst ein). Die Vorschläge sind ein Startpunkt, keine geprüfte Ausschreibung.
+          </p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', flex: '1 1 220px' }}>
+              Gewerk
+              <select style={eingabeStil} value={vorschlagGewerkId} onChange={(e) => { setVorschlagGewerkId(e.target.value); setVorschlaege(null) }}>
+                <option value="">– Gewerk wählen –</option>
+                {gewerke.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </label>
+            <button style={knopfStil} disabled={!vorschlagGewerkId || vorschlaegeLaden} onClick={vorschlaegeGenerieren}>
+              {vorschlaegeLaden ? 'Generiert …' : 'Vorschläge generieren'}
+            </button>
+          </div>
+          {vorschlaegeFehler && <p style={{ margin: 0, fontSize: 12.5, color: 'var(--red)' }}>{vorschlaegeFehler}</p>}
+          {vorschlaege && vorschlaege.length === 0 && (
+            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-faint)' }}>Keine Vorschläge erhalten – versuch es erneut.</p>
+          )}
+          {vorschlaege && vorschlaege.length > 0 && (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {vorschlaege.map((v, i) => (
+                  <label
+                    key={i}
+                    style={{
+                      display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 10px', borderRadius: 10,
+                      background: ausgewaehlteVorschlaege.has(i) ? 'var(--surface-2, rgba(99,107,47,.08))' : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input type="checkbox" checked={ausgewaehlteVorschlaege.has(i)} onChange={() => vorschlagUmschalten(i)} style={{ marginTop: 3 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{v.kurztext} <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>({v.einheit})</span></div>
+                      {v.langtext && <div style={{ fontSize: 12, color: 'var(--ink-faint)', marginTop: 2 }}>{v.langtext}</div>}
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <div>
+                <button style={knopfStil} disabled={uebernahmeLaeuft || ausgewaehlteVorschlaege.size === 0} onClick={vorschlaegeUebernehmen}>
+                  {uebernahmeLaeuft ? 'Übernimmt …' : `${ausgewaehlteVorschlaege.size} ausgewählte Position${ausgewaehlteVorschlaege.size === 1 ? '' : 'en'} übernehmen`}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {istEigentuemer && zeigeFormular && (
         <form onSubmit={anlegen} style={{ ...karteStil, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
