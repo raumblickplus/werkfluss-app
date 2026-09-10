@@ -46,7 +46,7 @@ const module: Record<string, ModulInfo> = {
   kommunikation: {
     titel: 'Kommunikation',
     phase: 'Phase 3',
-    beschreibung: 'Projektbezogener Chat, direkte Videotelefonie, Live-Übersetzung (DeepL) und KI-To-Do-Vorschläge (Claude) aus dem Gesprächsverlauf kannst du schon heute nutzen (Tab „Kommunikation“ im Projekt). Eine automatische Protokollierung folgt später.',
+    beschreibung: 'Projektbezogener Chat, direkte Videotelefonie, Live-Übersetzung (DeepL), KI-To-Do-Vorschläge (Claude) aus dem Gesprächsverlauf und automatische KI-Protokolle aus aufgezeichneten Videobesprechungen (nur mit Zustimmung beider Seiten) kannst du schon heute nutzen (Tab „Kommunikation“ im Projekt).',
   },
   networking: {
     titel: 'Networking',
