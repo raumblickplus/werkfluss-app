@@ -87,6 +87,9 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
   const [lvSpeichert, setLvSpeichert] = useState(false)
   const [lvFehler, setLvFehler] = useState<string | null>(null)
 
+  const [auftragFehler, setAuftragFehler] = useState<string | null>(null)
+  const [auftragLaeuft, setAuftragLaeuft] = useState<string | null>(null)
+
   async function laden() {
     setLadeStatus('laedt')
     const [
@@ -257,13 +260,51 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
   }
 
   async function auftragErstellen(angebot: Angebot) {
-    if (!angebot.firmen) return
+    if (!angebot.firmen || !aktivFirma) return
+    setAuftragFehler(null)
+    setAuftragLaeuft(angebot.id)
+
+    // Freigabekompetenz vorab prüfen (Konzept Abschnitt 8.14): Inhaber/
+    // Geschäftsführung dürfen immer, alle anderen nur bis zu ihrem
+    // hinterlegten Freigabelimit - so bekommt der Nutzer eine verständliche
+    // Meldung statt der kryptischen RLS-Fehlermeldung der Datenbank, die
+    // dieselbe Regel als zweite, verbindliche Absicherung durchsetzt.
+    if (aktivFirma.rolle !== 'inhaber' && aktivFirma.rolle !== 'geschaeftsfuehrung') {
+      const { data: eigeneMitgliedschaft } = await supabase
+        .from('firma_mitglieder')
+        .select('freigabe_limit_cents')
+        .eq('firma_id', aktivFirma.id)
+        .eq('nutzer_id', (await supabase.auth.getUser()).data.user?.id ?? '')
+        .maybeSingle()
+
+      const limit = eigeneMitgliedschaft?.freigabe_limit_cents ?? null
+      if (limit == null || limit < angebot.summe_netto_cents) {
+        setAuftragFehler(
+          limit == null
+            ? 'Für dich ist kein Freigabelimit hinterlegt – bitte einen Inhaber/eine Geschäftsführung um Freigabe bitten (Team-Seite).'
+            : `Dieser Auftrag (${centsZuEuroText(angebot.summe_netto_cents)}) übersteigt dein Freigabelimit von ${centsZuEuroText(limit)}. Bitte einen Inhaber/eine Geschäftsführung um Freigabe bitten.`
+        )
+        setAuftragLaeuft(null)
+        return
+      }
+    }
+
     const { error } = await supabase.from('auftraege').insert({
       projekt_id: projektId,
       angebot_id: angebot.id,
       auftragnehmer_firma_id: angebot.firmen.id,
       summe_netto_cents: angebot.summe_netto_cents,
     })
+
+    if (error) {
+      setAuftragFehler(
+        error.message.includes('row-level security')
+          ? 'Auftrag konnte nicht erstellt werden – dein Freigabelimit reicht dafür nicht aus.'
+          : `Auftrag erstellen fehlgeschlagen: ${error.message}`
+      )
+      setAuftragLaeuft(null)
+      return
+    }
 
     // Automatische To-do-Liste aus der Ausschreibung (Konzept Abschnitt 16,
     // Phase 2): wurde das Angebot aus dem Leistungsverzeichnis erstellt,
@@ -272,24 +313,23 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
     // nachbaut. Manuell erstellte Angebote haben keine Positionen und
     // erzeugen bewusst keine Aufgaben, da es dafür keine strukturierte
     // Grundlage gibt.
-    if (!error) {
-      const { data: positionenData } = await supabase
-        .from('angebot_positionen')
-        .select('kurztext, menge, einheit')
-        .eq('angebot_id', angebot.id)
+    const { data: positionenData } = await supabase
+      .from('angebot_positionen')
+      .select('kurztext, menge, einheit')
+      .eq('angebot_id', angebot.id)
 
-      if (positionenData && positionenData.length > 0) {
-        await supabase.from('aufgaben').insert(
-          positionenData.map((p) => ({
-            projekt_id: projektId,
-            titel: p.kurztext,
-            beschreibung: `${p.menge}${p.einheit ? ' ' + p.einheit : ''} · automatisch aus dem Angebot übernommen`,
-            gewerk: angebot.gewerk,
-          }))
-        )
-      }
+    if (positionenData && positionenData.length > 0) {
+      await supabase.from('aufgaben').insert(
+        positionenData.map((p) => ({
+          projekt_id: projektId,
+          titel: p.kurztext,
+          beschreibung: `${p.menge}${p.einheit ? ' ' + p.einheit : ''} · automatisch aus dem Angebot übernommen`,
+          gewerk: angebot.gewerk,
+        }))
+      )
     }
 
+    setAuftragLaeuft(null)
     laden()
   }
 
@@ -451,6 +491,12 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
         <p style={{ color: 'var(--ink-faint)' }}>Noch keine Angebote.</p>
       )}
 
+      {auftragFehler && (
+        <div style={{ ...karteStil, marginBottom: 14, padding: '12px 16px', borderColor: 'var(--red)' }}>
+          <p style={{ margin: 0, fontSize: 12.5, color: 'var(--red)' }}>{auftragFehler}</p>
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {angebote.map((a) => {
           const bruttoCents = Math.round(a.summe_netto_cents * (1 + a.mwst_satz / 100))
@@ -481,8 +527,12 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
                       ))}
                   </select>
                   {istEigentuemer && a.status === 'angenommen' && !angebotHatAuftrag(a.id) && (
-                    <button style={{ ...knopfStil, fontSize: 12, padding: '6px 10px' }} onClick={() => auftragErstellen(a)}>
-                      Auftrag erstellen
+                    <button
+                      style={{ ...knopfStil, fontSize: 12, padding: '6px 10px' }}
+                      disabled={auftragLaeuft === a.id}
+                      onClick={() => auftragErstellen(a)}
+                    >
+                      {auftragLaeuft === a.id ? 'Prüft Freigabe …' : 'Auftrag erstellen'}
                     </button>
                   )}
                 </div>

@@ -31,6 +31,10 @@ const rolleLabel: Record<string, string> = {
   mitarbeiter: 'Mitarbeiter',
 }
 
+function centsZuEuroEingabe(cents: number | null) {
+  return cents == null ? '' : (cents / 100).toFixed(2).replace('.', ',')
+}
+
 export default function Team() {
   const { aktivFirma } = useAuth()
   const [mitglieder, setMitglieder] = useState<Mitglied[]>([])
@@ -43,6 +47,8 @@ export default function Team() {
   const [neuerLink, setNeuerLink] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
   const [kopiertToken, setKopiertToken] = useState<string | null>(null)
+  const [limitBearbeitung, setLimitBearbeitung] = useState<{ id: string; wert: string } | null>(null)
+  const [limitSpeichert, setLimitSpeichert] = useState(false)
 
   const istAdmin = aktivFirma?.rolle === 'inhaber' || aktivFirma?.rolle === 'geschaeftsfuehrung'
 
@@ -117,6 +123,21 @@ export default function Team() {
     setTimeout(() => setKopiertToken(null), 1800)
   }
 
+  async function limitSpeichern(id: string) {
+    if (!limitBearbeitung) return
+    setLimitSpeichert(true)
+    const roh = limitBearbeitung.wert.trim().replace(',', '.')
+    const neuesLimitCents = roh === '' ? null : Math.round(parseFloat(roh) * 100)
+    if (roh !== '' && Number.isNaN(neuesLimitCents)) {
+      setLimitSpeichert(false)
+      return
+    }
+    await supabase.from('firma_mitglieder').update({ freigabe_limit_cents: neuesLimitCents }).eq('id', id)
+    setLimitSpeichert(false)
+    setLimitBearbeitung(null)
+    laden()
+  }
+
   if (!aktivFirma) return null
 
   return (
@@ -181,25 +202,74 @@ export default function Team() {
         {ladeStatus === 'bereit' && mitglieder.length === 0 && (
           <p style={{ padding: 12, color: 'var(--ink-faint)', fontSize: 13 }}>Keine Mitglieder gefunden.</p>
         )}
-        {mitglieder.map((m) => (
-          <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 10px', borderBottom: '1px solid rgba(40,28,14,.08)' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700 }}>{m.profile?.vollname || m.profile?.email || 'Unbekannt'}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>
-                {m.profile?.email}{m.abteilung ? ` · ${m.abteilung}` : ''}
+        {mitglieder.map((m) => {
+          const istUnbegrenzt = m.rolle === 'inhaber' || m.rolle === 'geschaeftsfuehrung'
+          const bearbeitetGerade = limitBearbeitung?.id === m.id
+          return (
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 10px', borderBottom: '1px solid rgba(40,28,14,.08)', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700 }}>{m.profile?.vollname || m.profile?.email || 'Unbekannt'}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>
+                  {m.profile?.email}{m.abteilung ? ` · ${m.abteilung}` : ''}
+                </div>
               </div>
+              <span style={pillStil('neutral')}>{rolleLabel[m.rolle] ?? m.rolle}</span>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 190 }}>
+                {istUnbegrenzt ? (
+                  <span style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>Freigabe: unbegrenzt</span>
+                ) : bearbeitetGerade ? (
+                  <>
+                    <input
+                      style={{ ...eingabeStil, width: 90, padding: '5px 8px', fontSize: 12 }}
+                      value={limitBearbeitung.wert}
+                      onChange={(e) => setLimitBearbeitung({ id: m.id, wert: e.target.value })}
+                      placeholder="z.B. 5000"
+                      autoFocus
+                    />
+                    <span style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>€</span>
+                    <button
+                      style={{ ...knopfSekundaerStil, padding: '5px 9px', fontSize: 11 }}
+                      disabled={limitSpeichert}
+                      onClick={() => limitSpeichern(m.id)}
+                    >
+                      {limitSpeichert ? '…' : 'OK'}
+                    </button>
+                    <button
+                      style={{ all: 'unset', cursor: 'pointer', fontSize: 11, color: 'var(--ink-faint)' }}
+                      onClick={() => setLimitBearbeitung(null)}
+                    >
+                      Abbrechen
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>
+                      Freigabe: {m.freigabe_limit_cents != null ? `bis ${(m.freigabe_limit_cents / 100).toLocaleString('de-DE')} €` : 'kein Limit hinterlegt'}
+                    </span>
+                    {istAdmin && (
+                      <button
+                        style={{ all: 'unset', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: 'var(--orange-text)' }}
+                        onClick={() => setLimitBearbeitung({ id: m.id, wert: centsZuEuroEingabe(m.freigabe_limit_cents) })}
+                      >
+                        Bearbeiten
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {istAdmin && m.rolle !== 'inhaber' && (
+                <button
+                  style={{ all: 'unset', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: 'var(--red)' }}
+                  onClick={() => mitgliedEntfernen(m.id, m.profile?.vollname || m.profile?.email || 'diese Person')}
+                >
+                  Entfernen
+                </button>
+              )}
             </div>
-            <span style={pillStil('neutral')}>{rolleLabel[m.rolle] ?? m.rolle}</span>
-            {istAdmin && m.rolle !== 'inhaber' && (
-              <button
-                style={{ all: 'unset', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: 'var(--red)' }}
-                onClick={() => mitgliedEntfernen(m.id, m.profile?.vollname || m.profile?.email || 'diese Person')}
-              >
-                Entfernen
-              </button>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {istAdmin && einladungen.length > 0 && (
@@ -234,8 +304,10 @@ export default function Team() {
       )}
 
       <p className="footnote">
-        Freigabekompetenzen je Mitglied (z.B. „Zahlungen bis 5.000 €") folgen, sobald die Buchhaltung
-        angebunden ist. Der Versand von Einladungslinks läuft aktuell manuell – ein eigener
+        Das Freigabelimit legt fest, bis zu welcher Auftragssumme ein Mitglied selbst einen Auftrag
+        erteilen darf (z.B. „Zahlungen bis 5.000 €") – ohne hinterlegtes Limit kann das Mitglied
+        keinen Auftrag erteilen, nur ansehen. Inhaber und Geschäftsführung sind immer unbegrenzt
+        freigabeberechtigt. Der Versand von Einladungslinks läuft aktuell manuell – ein eigener
         E-Mail-Versand ist für eine spätere Phase vorgesehen.
       </p>
     </AppShell>
