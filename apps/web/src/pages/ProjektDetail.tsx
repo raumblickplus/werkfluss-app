@@ -13,10 +13,11 @@ import Aufgaben from './projekt/Aufgaben'
 import Abnahme from './projekt/Abnahme'
 import Rechnungen from './projekt/Rechnungen'
 import Foerdermittel from './projekt/Foerdermittel'
+import Faelle from './projekt/Faelle'
 import { projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
 type Projekt = ProjektDetails & { firma_id: string; breitengrad: number | null; laengengrad: number | null }
-type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'rechnungen' | 'foerdermittel'
+type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'faelle' | 'rechnungen' | 'foerdermittel'
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'uebersicht', label: 'Übersicht' },
@@ -27,6 +28,7 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'maengel', label: 'Mängel' },
   { key: 'aufgaben', label: 'Aufgaben' },
   { key: 'abnahme', label: 'Abnahme' },
+  { key: 'faelle', label: 'Fälle' },
   { key: 'rechnungen', label: 'Rechnungen' },
   { key: 'foerdermittel', label: 'Fördermittel' },
 ]
@@ -137,6 +139,7 @@ export default function ProjektDetail() {
       {aktivTab === 'maengel' && <Maengel projektId={id} istEigentuemer={istEigentuemer} />}
       {aktivTab === 'aufgaben' && <Aufgaben projektId={id} />}
       {aktivTab === 'abnahme' && <Abnahme projektId={id} />}
+      {aktivTab === 'faelle' && <Faelle projektId={id} istEigentuemer={istEigentuemer} />}
       {aktivTab === 'rechnungen' && istEigentuemer && <Rechnungen projektId={id} />}
       {aktivTab === 'foerdermittel' && (
         <Foerdermittel projektId={id} istEigentuemer={istEigentuemer} vorhabenart={projekt.vorhabenart} />
