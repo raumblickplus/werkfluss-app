@@ -61,7 +61,7 @@ const module: Record<string, ModulInfo> = {
   foerdermittel: {
     titel: 'Fördermittel',
     phase: 'Phase 5',
-    beschreibung: 'Unverbindliche Ersteinschätzung zu KfW-/BAFA-Förderungen und Nachweisführung – ausdrücklich keine Förderzusage, siehe die rechtlichen Rahmenbedingungen im Konzept.',
+    beschreibung: 'Unverbindliche Ersteinschätzung zu KfW-/BAFA-Förderungen kannst du schon heute nutzen (Tab „Fördermittel" im Projekt) – ausdrücklich keine Förderzusage. Die Antragsbegleitung/Nachweisführung folgt später.',
   },
   projektmappe: {
     titel: 'Projektmappe',
@@ -81,10 +81,10 @@ const module: Record<string, ModulInfo> = {
 }
 
 // Diese Module sind keine eigenen Seiten, sondern nur Tabs innerhalb eines
-// Projekts (Kommunikation, Ausschreibung & LV). Statt der "Noch nicht
-// verfügbar"-Kachel zeigen wir hier eine Projektauswahl, die direkt zum
-// passenden Tab springt – bei genau einem Projekt automatisch.
-const PROJEKT_TAB_MODULE = new Set(['kommunikation', 'ausschreibung'])
+// Projekts (Kommunikation, Ausschreibung & LV, Fördermittel). Statt der
+// "Noch nicht verfügbar"-Kachel zeigen wir hier eine Projektauswahl, die
+// direkt zum passenden Tab springt – bei genau einem Projekt automatisch.
+const PROJEKT_TAB_MODULE = new Set(['kommunikation', 'ausschreibung', 'foerdermittel'])
 
 type ProjektKurz = { id: string; name: string; kunde_name: string | null }
 
