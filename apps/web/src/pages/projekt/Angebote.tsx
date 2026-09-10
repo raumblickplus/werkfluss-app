@@ -39,6 +39,22 @@ type LvPosition = {
 
 type KatalogPosition = { id: string; gewerk_id: string | null; kurztext: string; einheit: string | null; einzelpreis_cents: number }
 
+type Nachtrag = {
+  id: string
+  auftrag_id: string
+  titel: string
+  beschreibung: string | null
+  betrag_netto_cents: number
+  status: 'eingereicht' | 'freigegeben' | 'abgelehnt'
+  erstellt_am: string
+}
+
+const nachtragStatusLabel: Record<Nachtrag['status'], string> = {
+  eingereicht: 'Eingereicht',
+  freigegeben: 'Freigegeben',
+  abgelehnt: 'Abgelehnt',
+}
+
 type LvZeile = { lvPositionId: string; kurztext: string; menge: number; einheit: string | null; einzelpreisEuro: string }
 
 const statusLabel: Record<Angebot['status'], string> = {
@@ -68,6 +84,14 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
   const { aktivFirma } = useAuth()
   const [angebote, setAngebote] = useState<Angebot[]>([])
   const [auftraege, setAuftraege] = useState<Auftrag[]>([])
+  const [nachtraege, setNachtraege] = useState<Nachtrag[]>([])
+  const [nachtragFormFuer, setNachtragFormFuer] = useState<string | null>(null)
+  const [nachtragTitel, setNachtragTitel] = useState('')
+  const [nachtragBeschreibung, setNachtragBeschreibung] = useState('')
+  const [nachtragBetragEuro, setNachtragBetragEuro] = useState('')
+  const [nachtragSpeichert, setNachtragSpeichert] = useState(false)
+  const [nachtragFehler, setNachtragFehler] = useState<string | null>(null)
+  const [nachtragEntscheidetGerade, setNachtragEntscheidetGerade] = useState<string | null>(null)
   const [firmenOptionen, setFirmenOptionen] = useState<Firma[]>([])
   const [gewerke, setGewerke] = useState<Gewerk[]>([])
   const [lvPositionen, setLvPositionen] = useState<LvPosition[]>([])
@@ -100,6 +124,7 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
       { data: gewerkeData },
       { data: lvData },
       { data: katalogData },
+      { data: nachtraegeData },
     ] = await Promise.all([
       supabase
         .from('angebote')
@@ -121,6 +146,11 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
       aktivFirma
         ? supabase.from('preiskatalog_positionen').select('id, gewerk_id, kurztext, einheit, einzelpreis_cents').eq('firma_id', aktivFirma.id)
         : Promise.resolve({ data: [] as KatalogPosition[] }),
+      supabase
+        .from('nachtraege')
+        .select('id, auftrag_id, titel, beschreibung, betrag_netto_cents, status, erstellt_am')
+        .eq('projekt_id', projektId)
+        .order('erstellt_am', { ascending: false }),
     ])
 
     if (angeboteFehler) { setLadeStatus('fehler'); return }
@@ -129,6 +159,7 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
     setGewerke(gewerkeData ?? [])
     setLvPositionen((lvData ?? []) as LvPosition[])
     setKatalog((katalogData ?? []) as KatalogPosition[])
+    setNachtraege((nachtraegeData ?? []) as Nachtrag[])
 
     // Nur der Eigentümer (GU) kann ein Angebot im Namen einer anderen,
     // verknüpften Firma anlegen (z.B. wenn eine Firma noch keinen eigenen
@@ -389,6 +420,39 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
 
   const angebotHatAuftrag = (angebotId: string) => auftraege.some((a) => a.angebot_id === angebotId)
 
+  async function nachtragEinreichen(auftragId: string) {
+    const betragCents = Math.round(parseFloat(nachtragBetragEuro.replace(',', '.')) * 100)
+    if (!nachtragTitel.trim() || Number.isNaN(betragCents)) {
+      setNachtragFehler('Bitte Titel und Betrag angeben (Minderleistung als negativer Betrag, z.B. -450).')
+      return
+    }
+    setNachtragSpeichert(true)
+    setNachtragFehler(null)
+    const { error } = await supabase.from('nachtraege').insert({
+      projekt_id: projektId,
+      auftrag_id: auftragId,
+      titel: nachtragTitel.trim(),
+      beschreibung: nachtragBeschreibung.trim() || null,
+      betrag_netto_cents: betragCents,
+    })
+    setNachtragSpeichert(false)
+    if (error) { setNachtragFehler(error.message); return }
+    setNachtragFormFuer(null)
+    setNachtragTitel('')
+    setNachtragBeschreibung('')
+    setNachtragBetragEuro('')
+    laden()
+  }
+
+  async function nachtragEntscheiden(id: string, freigeben: boolean) {
+    setNachtragEntscheidetGerade(id)
+    setNachtragFehler(null)
+    const { error } = await supabase.rpc('nachtrag_entscheiden', { p_nachtrag_id: id, p_freigeben: freigeben })
+    setNachtragEntscheidetGerade(null)
+    if (error) { setNachtragFehler(error.message); return }
+    laden()
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
@@ -610,23 +674,105 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
         <div style={{ marginTop: 28 }}>
           <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 16, marginBottom: 10 }}>Aufträge</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {auftraege.map((au) => (
-              <div key={au.id} style={{ ...karteStil, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <div>
-                  <div style={{ fontWeight: 700 }}>{au.firmen?.name ?? 'Unbekannte Firma'}</div>
-                  <div style={{ fontSize: 13, color: 'var(--ink-dim)', marginTop: 2 }}>{centsZuEuroText(au.summe_netto_cents)} netto</div>
+            {auftraege.map((au) => {
+              const eigeneNachtraege = nachtraege.filter((n) => n.auftrag_id === au.id)
+              const darfNachtragEinreichen = istEigentuemer || (!!aktivFirma && aktivFirma.id === au.firmen?.id)
+              const formOffenFuerDiesen = nachtragFormFuer === au.id
+              return (
+                <div key={au.id} style={{ ...karteStil, padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{au.firmen?.name ?? 'Unbekannte Firma'}</div>
+                      <div style={{ fontSize: 13, color: 'var(--ink-dim)', marginTop: 2 }}>{centsZuEuroText(au.summe_netto_cents)} netto</div>
+                    </div>
+                    <select
+                      style={{ ...eingabeStil, fontSize: 13, padding: '6px 10px' }}
+                      value={au.status}
+                      onChange={(e) => auftragStatusAendern(au.id, e.target.value as Auftrag['status'])}
+                    >
+                      {Object.entries(auftragStatusLabel).map(([wert, label]) => (
+                        <option key={wert} value={wert}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {eigeneNachtraege.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '1px solid var(--glass-border)', paddingTop: 10 }}>
+                      {eigeneNachtraege.map((n) => (
+                        <div key={n.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+                          <div style={{ flex: 1, minWidth: 160 }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 700 }}>
+                              {n.titel} · {n.betrag_netto_cents >= 0 ? '+' : ''}{centsZuEuroText(n.betrag_netto_cents)}
+                            </div>
+                            {n.beschreibung && <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', marginTop: 2 }}>{n.beschreibung}</div>}
+                          </div>
+                          <span
+                            style={{
+                              fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999, whiteSpace: 'nowrap',
+                              color: n.status === 'freigegeben' ? '#2B5A34' : n.status === 'abgelehnt' ? 'var(--red)' : 'var(--orange-text)',
+                              background: n.status === 'freigegeben' ? 'color-mix(in oklab, #3F7D4A 16%, transparent)' : n.status === 'abgelehnt' ? 'color-mix(in oklab, var(--red) 15%, transparent)' : 'color-mix(in oklab, var(--orange) 16%, transparent)',
+                            }}
+                          >
+                            {nachtragStatusLabel[n.status]}
+                          </span>
+                          {istEigentuemer && n.status === 'eingereicht' && (
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button
+                                style={{ all: 'unset', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: 'var(--olive)' }}
+                                disabled={nachtragEntscheidetGerade === n.id}
+                                onClick={() => nachtragEntscheiden(n.id, true)}
+                              >
+                                Freigeben
+                              </button>
+                              <button
+                                style={{ all: 'unset', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: 'var(--red)' }}
+                                disabled={nachtragEntscheidetGerade === n.id}
+                                onClick={() => nachtragEntscheiden(n.id, false)}
+                              >
+                                Ablehnen
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {darfNachtragEinreichen && (
+                    <div style={{ borderTop: eigeneNachtraege.length > 0 ? 'none' : '1px solid var(--glass-border)', paddingTop: eigeneNachtraege.length > 0 ? 0 : 10 }}>
+                      {formOffenFuerDiesen ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <input style={{ ...eingabeStil, flex: '2 1 180px' }} placeholder="Titel, z.B. Zusätzliche Steckdosen" value={nachtragTitel} onChange={(e) => setNachtragTitel(e.target.value)} />
+                            <input style={{ ...eingabeStil, flex: '1 1 120px' }} placeholder="Betrag netto (€)" value={nachtragBetragEuro} onChange={(e) => setNachtragBetragEuro(e.target.value)} />
+                          </div>
+                          <input style={eingabeStil} placeholder="Beschreibung/Grund (optional)" value={nachtragBeschreibung} onChange={(e) => setNachtragBeschreibung(e.target.value)} />
+                          {nachtragFehler && <p style={{ margin: 0, fontSize: 12, color: 'var(--red)' }}>{nachtragFehler}</p>}
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button style={{ ...knopfStil, fontSize: 12, padding: '6px 12px' }} disabled={nachtragSpeichert} onClick={() => nachtragEinreichen(au.id)}>
+                              {nachtragSpeichert ? 'Speichert …' : 'Nachtrag einreichen'}
+                            </button>
+                            <button
+                              style={{ ...knopfSekundaerStil, fontSize: 12, padding: '6px 12px' }}
+                              onClick={() => { setNachtragFormFuer(null); setNachtragFehler(null) }}
+                            >
+                              Abbrechen
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          style={{ all: 'unset', cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: 'var(--orange-text)' }}
+                          onClick={() => { setNachtragFormFuer(au.id); setNachtragTitel(''); setNachtragBeschreibung(''); setNachtragBetragEuro(''); setNachtragFehler(null) }}
+                        >
+                          + Nachtrag einreichen
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <select
-                  style={{ ...eingabeStil, fontSize: 13, padding: '6px 10px' }}
-                  value={au.status}
-                  onChange={(e) => auftragStatusAendern(au.id, e.target.value as Auftrag['status'])}
-                >
-                  {Object.entries(auftragStatusLabel).map(([wert, label]) => (
-                    <option key={wert} value={wert}>{label}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
