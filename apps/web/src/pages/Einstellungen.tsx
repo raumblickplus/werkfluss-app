@@ -11,6 +11,9 @@ type FirmaDetails = {
   rechtsform: string | null
   adresse: string | null
   ust_id: string | null
+  telefon: string | null
+  email: string | null
+  iban: string | null
 }
 
 export default function Einstellungen() {
@@ -47,7 +50,7 @@ export default function Einstellungen() {
     setFirmaLadeStatus('laedt')
     supabase
       .from('firmen')
-      .select('id, name, rechtsform, adresse, ust_id')
+      .select('id, name, rechtsform, adresse, ust_id, telefon, email, iban')
       .eq('id', aktivFirma.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -97,7 +100,7 @@ export default function Einstellungen() {
     setFirmaSpeichern('speichert')
     const { error } = await supabase
       .from('firmen')
-      .update({ name: firma.name, rechtsform: firma.rechtsform, adresse: firma.adresse, ust_id: firma.ust_id })
+      .update({ name: firma.name, rechtsform: firma.rechtsform, adresse: firma.adresse, ust_id: firma.ust_id, telefon: firma.telefon, email: firma.email, iban: firma.iban })
       .eq('id', firma.id)
     if (error) { setFirmaSpeichern('fehler'); return }
     setFirmaSpeichern('gespeichert')
@@ -188,6 +191,20 @@ export default function Einstellungen() {
             <div className="field">
               <label>Adresse</label>
               <input style={eingabeStil} value={firma.adresse ?? ''} disabled={!istAdmin} onChange={(e) => setFirma({ ...firma, adresse: e.target.value })} />
+            </div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <div className="field" style={{ flex: 1, minWidth: 160 }}>
+                <label>Telefon (für Rechnungs-/Angebotskopf)</label>
+                <input style={eingabeStil} value={firma.telefon ?? ''} disabled={!istAdmin} onChange={(e) => setFirma({ ...firma, telefon: e.target.value })} />
+              </div>
+              <div className="field" style={{ flex: 1, minWidth: 160 }}>
+                <label>E-Mail (für Rechnungs-/Angebotskopf)</label>
+                <input style={eingabeStil} value={firma.email ?? ''} disabled={!istAdmin} onChange={(e) => setFirma({ ...firma, email: e.target.value })} />
+              </div>
+            </div>
+            <div className="field">
+              <label>IBAN (für Zahlungshinweis auf Rechnungen, optional)</label>
+              <input style={eingabeStil} value={firma.iban ?? ''} disabled={!istAdmin} onChange={(e) => setFirma({ ...firma, iban: e.target.value })} placeholder="DE.." />
             </div>
             {istAdmin && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

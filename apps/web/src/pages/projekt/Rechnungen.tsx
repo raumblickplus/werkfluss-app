@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabaseClient'
+import { useAuth } from '../../lib/AuthContext'
 import { eingabeStil, knopfStil, knopfSekundaerStil, karteStil } from '../stil'
+import { dokumentDrucken, rechnungDruckHtml, type DruckFirma } from '../../lib/druckExport'
 
 type Firma = { id: string; name: string }
 type AuftragOption = { id: string; angebot_id: string | null; firmen: Firma | null }
@@ -44,6 +46,9 @@ const euro = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR'
 const centsZuEuroText = (cents: number) => euro.format(cents / 100)
 
 export default function Rechnungen({ projektId }: { projektId: string }) {
+  const { aktivFirma } = useAuth()
+  const [druckFirma, setDruckFirma] = useState<DruckFirma | null>(null)
+  const [projektFuerDruck, setProjektFuerDruck] = useState<{ name: string; kunde_name: string | null; kunde_rechnungsadresse: string | null } | null>(null)
   const [rechnungen, setRechnungen] = useState<Rechnung[]>([])
   const [auftraege, setAuftraege] = useState<AuftragOption[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
@@ -90,6 +95,44 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
   }
 
   useEffect(() => { laden() }, [projektId])
+
+  // Für den PDF-Druck: Aussteller-Firma (eigene, aktive Firma - der
+  // Rechnungen-Tab ist ohnehin nur für den Projekteigentümer sichtbar) und
+  // Empfänger-Angaben aus dem Projekt, einmalig geladen statt pro Klick.
+  useEffect(() => {
+    if (aktivFirma) {
+      supabase
+        .from('firmen')
+        .select('name, rechtsform, adresse, ust_id, telefon, email, iban')
+        .eq('id', aktivFirma.id)
+        .maybeSingle()
+        .then(({ data }) => { if (data) setDruckFirma(data as DruckFirma) })
+    }
+    supabase
+      .from('projekte')
+      .select('name, kunde_name, kunde_rechnungsadresse')
+      .eq('id', projektId)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setProjektFuerDruck(data) })
+  }, [aktivFirma?.id, projektId])
+
+  function rechnungDrucken(r: Rechnung) {
+    if (!druckFirma || !projektFuerDruck) return
+    const html = rechnungDruckHtml({
+      rechnungsnummer: r.rechnungsnummer,
+      typLabel: typLabel[r.typ],
+      erstelltAm: r.erstellt_am,
+      faelligAm: r.faellig_am,
+      summeNettoCents: r.summe_netto_cents,
+      mwstSatz: r.mwst_satz,
+      firma: druckFirma,
+      projektName: projektFuerDruck.name,
+      kundeName: projektFuerDruck.kunde_name,
+      kundeRechnungsadresse: projektFuerDruck.kunde_rechnungsadresse,
+      auftragBezeichnung: r.auftraege?.firmen ? `Auftrag ${r.auftraege.firmen.name}` : null,
+    })
+    dokumentDrucken(`${r.rechnungsnummer} – ${projektFuerDruck.name}`, html)
+  }
 
   async function auftragAusgewaehlt(neueAuftragId: string) {
     setAuftragId(neueAuftragId)
@@ -326,13 +369,24 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
                     </div>
                   )}
                 </div>
-                <select
-                  style={{ ...eingabeStil, fontSize: 13, padding: '6px 10px', color: statusFarbe[r.status] }}
-                  value={r.status}
-                  onChange={(e) => statusAendern(r.id, e.target.value as Rechnung['status'])}
-                >
-                  {Object.entries(statusLabel).map(([wert, label]) => <option key={wert} value={wert}>{label}</option>)}
-                </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => rechnungDrucken(r)}
+                    disabled={!druckFirma || !projektFuerDruck}
+                    style={{ ...knopfSekundaerStil, fontSize: 12, padding: '6px 12px' }}
+                    title="Als PDF drucken/speichern"
+                  >
+                    PDF
+                  </button>
+                  <select
+                    style={{ ...eingabeStil, fontSize: 13, padding: '6px 10px', color: statusFarbe[r.status] }}
+                    value={r.status}
+                    onChange={(e) => statusAendern(r.id, e.target.value as Rechnung['status'])}
+                  >
+                    {Object.entries(statusLabel).map(([wert, label]) => <option key={wert} value={wert}>{label}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
           )

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { eingabeStil, knopfStil, knopfSekundaerStil, karteStil } from '../stil'
+import { dokumentDrucken, angebotDruckHtml, type DruckFirma, type DruckPosition } from '../../lib/druckExport'
 
 type Firma = { id: string; name: string }
 type Gewerk = { id: string; name: string }
@@ -188,6 +189,44 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
   }
 
   useEffect(() => { laden() }, [projektId, aktivFirma?.id, istEigentuemer])
+
+  // Projekt-Stammdaten für den PDF-Kopf (Name/Adresse) - separat geladen,
+  // da sie im großen Promise.all oben nicht gebraucht werden.
+  const [projektFuerDruck, setProjektFuerDruck] = useState<{ name: string; adresse: string | null } | null>(null)
+  useEffect(() => {
+    supabase
+      .from('projekte')
+      .select('name, adresse')
+      .eq('id', projektId)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setProjektFuerDruck(data) })
+  }, [projektId])
+
+  async function angebotDrucken(a: Angebot) {
+    if (!a.firmen || !projektFuerDruck) return
+    const [{ data: firmaData }, { data: posData }] = await Promise.all([
+      supabase.from('firmen').select('name, rechtsform, adresse, ust_id, telefon, email, iban').eq('id', a.firmen.id).maybeSingle(),
+      supabase
+        .from('angebot_positionen')
+        .select('kurztext, menge, einheit, einzelpreis_cents')
+        .eq('angebot_id', a.id)
+        .order('erstellt_am', { ascending: true }),
+    ])
+    if (!firmaData) return
+    const html = angebotDruckHtml({
+      angebotsnummer: `A-${new Date(a.erstellt_am).getFullYear()}-${a.id.slice(0, 6).toUpperCase()}`,
+      gewerk: a.gewerk,
+      erstelltAm: a.erstellt_am,
+      gueltigBis: a.gueltig_bis,
+      mwstSatz: a.mwst_satz,
+      firma: firmaData as DruckFirma,
+      projektName: projektFuerDruck.name,
+      projektAdresse: projektFuerDruck.adresse,
+      positionen: (posData ?? []) as DruckPosition[],
+      summeNettoCents: a.summe_netto_cents,
+    })
+    dokumentDrucken(`Angebot ${a.firmen.name} – ${projektFuerDruck.name}`, html)
+  }
 
   const gewerkeMitOffenenLv = useMemo(() => {
     const idsMitOffenen = new Set(lvPositionen.filter((p) => p.gewerk_id).map((p) => p.gewerk_id as string))
@@ -651,17 +690,28 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-                  <select
-                    style={{ ...eingabeStil, fontSize: 13, padding: '6px 10px' }}
-                    value={a.status}
-                    onChange={(e) => statusAendern(a.id, e.target.value as Angebot['status'])}
-                  >
-                    {Object.entries(statusLabel)
-                      .filter(([wert]) => istEigentuemer || wert === 'entwurf' || wert === 'versendet')
-                      .map(([wert, label]) => (
-                        <option key={wert} value={wert}>{label}</option>
-                      ))}
-                  </select>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => angebotDrucken(a)}
+                      disabled={!projektFuerDruck}
+                      style={{ ...knopfSekundaerStil, fontSize: 12, padding: '6px 12px' }}
+                      title="Als PDF drucken/speichern"
+                    >
+                      PDF
+                    </button>
+                    <select
+                      style={{ ...eingabeStil, fontSize: 13, padding: '6px 10px' }}
+                      value={a.status}
+                      onChange={(e) => statusAendern(a.id, e.target.value as Angebot['status'])}
+                    >
+                      {Object.entries(statusLabel)
+                        .filter(([wert]) => istEigentuemer || wert === 'entwurf' || wert === 'versendet')
+                        .map(([wert, label]) => (
+                          <option key={wert} value={wert}>{label}</option>
+                        ))}
+                    </select>
+                  </div>
                   {istEigentuemer && a.status === 'angenommen' && !angebotHatAuftrag(a.id) && (
                     <button
                       style={{ ...knopfStil, fontSize: 12, padding: '6px 10px' }}
