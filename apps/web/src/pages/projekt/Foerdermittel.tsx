@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { karteStil, knopfStil, pillStil } from '../stil'
 
@@ -119,6 +119,27 @@ type GespeicherteEinschaetzung = {
   erstellt_am: string
 }
 
+type NachweisStatus = 'offen' | 'eingereicht' | 'akzeptiert'
+type Nachweis = {
+  id: string
+  bezeichnung: string
+  status: NachweisStatus
+  frist: string | null
+  dokument_referenz: string | null
+  notiz: string | null
+  erstellt_am: string
+}
+const naechsterStatus: Record<NachweisStatus, NachweisStatus> = {
+  offen: 'eingereicht',
+  eingereicht: 'akzeptiert',
+  akzeptiert: 'offen',
+}
+const statusLabel: Record<NachweisStatus, string> = {
+  offen: 'Offen',
+  eingereicht: 'Eingereicht',
+  akzeptiert: 'Akzeptiert',
+}
+
 export default function Foerdermittel({
   projektId,
   istEigentuemer,
@@ -133,6 +154,13 @@ export default function Foerdermittel({
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
   const [speichert, setSpeichert] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
+
+  const [nachweise, setNachweise] = useState<Nachweis[]>([])
+  const [nachweiseLadeStatus, setNachweiseLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
+  const [neueBezeichnung, setNeueBezeichnung] = useState('')
+  const [neueFrist, setNeueFrist] = useState('')
+  const [neuerDokRef, setNeuerDokRef] = useState('')
+  const [nachweisSendet, setNachweisSendet] = useState(false)
 
   useEffect(() => {
     let abgebrochen = false
@@ -162,6 +190,57 @@ export default function Foerdermittel({
     laden()
     return () => { abgebrochen = true }
   }, [projektId, vorhabenart])
+
+  async function nachweiseAktualisieren() {
+    setNachweiseLadeStatus('laedt')
+    const { data, error } = await supabase
+      .from('foerdermittel_nachweise')
+      .select('id, bezeichnung, status, frist, dokument_referenz, notiz, erstellt_am')
+      .eq('projekt_id', projektId)
+      .order('frist', { ascending: true, nullsFirst: false })
+      .order('erstellt_am', { ascending: false })
+    if (error) { setNachweiseLadeStatus('fehler'); return }
+    setNachweise((data ?? []) as Nachweis[])
+    setNachweiseLadeStatus('bereit')
+  }
+
+  useEffect(() => {
+    nachweiseAktualisieren()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projektId])
+
+  async function nachweisHinzufuegen(e: FormEvent) {
+    e.preventDefault()
+    if (!neueBezeichnung.trim()) return
+    setNachweisSendet(true)
+    const { data: userData } = await supabase.auth.getUser()
+    const { error } = await supabase.from('foerdermittel_nachweise').insert({
+      projekt_id: projektId,
+      bezeichnung: neueBezeichnung.trim(),
+      frist: neueFrist || null,
+      dokument_referenz: neuerDokRef.trim() || null,
+      erstellt_von: userData.user?.id ?? null,
+    })
+    setNachweisSendet(false)
+    if (error) return
+    setNeueBezeichnung('')
+    setNeueFrist('')
+    setNeuerDokRef('')
+    await nachweiseAktualisieren()
+  }
+
+  async function nachweisStatusUmschalten(n: Nachweis) {
+    await supabase.from('foerdermittel_nachweise').update({ status: naechsterStatus[n.status] }).eq('id', n.id)
+    await nachweiseAktualisieren()
+  }
+
+  async function nachweisLoeschen(id: string) {
+    await supabase.from('foerdermittel_nachweise').delete().eq('id', id)
+    await nachweiseAktualisieren()
+  }
+
+  const heuteIso = new Date().toISOString().slice(0, 10)
+  const inDreissigTagenIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
   function umschalten(key: MassnahmeKey) {
     setAusgewaehlt((prev) => {
@@ -273,6 +352,106 @@ export default function Foerdermittel({
           )}
         </div>
       )}
+
+      <div style={karteStil}>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 16, margin: '0 0 4px' }}>Checkliste & Nachweisführung</h2>
+        <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--ink-faint)' }}>
+          Benötigte Unterlagen für einen laufenden Förderantrag, mit Frist und Verweis auf den jeweiligen Nachweis
+          (z. B. eine Rechnungsnummer oder ein Dokument aus „Pläne & Dokumente"). Ersetzt keine Prüfung durch den
+          Fördermittelgeber.
+        </p>
+
+        {nachweiseLadeStatus === 'laedt' && <p style={{ color: 'var(--ink-faint)', fontSize: 13 }}>Lädt …</p>}
+        {nachweiseLadeStatus === 'fehler' && <p style={{ color: 'var(--red)', fontSize: 13 }}>Konnte nicht geladen werden.</p>}
+
+        {nachweiseLadeStatus === 'bereit' && (
+          <>
+            {nachweise.length === 0 ? (
+              <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--ink-faint)' }}>Noch keine Einträge.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                {nachweise.map((n) => {
+                  const ueberfaellig = !!n.frist && n.frist < heuteIso && n.status !== 'akzeptiert'
+                  const baldFaellig = !!n.frist && n.frist >= heuteIso && n.frist <= inDreissigTagenIso && n.status !== 'akzeptiert'
+                  return (
+                    <div
+                      key={n.id}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: 10,
+                        border: `1px solid ${ueberfaellig ? 'var(--red)' : 'var(--glass-border)'}`,
+                        background: 'rgba(255,255,255,.35)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 700 }}>{n.bezeichnung}</span>
+                          <button
+                            type="button"
+                            onClick={() => istEigentuemer && nachweisStatusUmschalten(n)}
+                            disabled={!istEigentuemer}
+                            style={{ ...pillStil(n.status === 'akzeptiert' ? 'ok' : n.status === 'eingereicht' ? 'warn' : 'neutral'), border: 'none', cursor: istEigentuemer ? 'pointer' : 'default' }}
+                          >
+                            {statusLabel[n.status]}
+                          </button>
+                          {n.frist && (
+                            <span style={{ fontSize: 11.5, color: ueberfaellig ? 'var(--red)' : baldFaellig ? 'var(--orange-text)' : 'var(--ink-faint)' }}>
+                              Frist: {new Date(n.frist).toLocaleDateString('de-DE')}{ueberfaellig ? ' (überfällig)' : ''}
+                            </span>
+                          )}
+                        </div>
+                        {istEigentuemer && (
+                          <button
+                            type="button"
+                            onClick={() => nachweisLoeschen(n.id)}
+                            style={{ all: 'unset', cursor: 'pointer', fontSize: 11.5, color: 'var(--ink-faint)' }}
+                          >
+                            Entfernen
+                          </button>
+                        )}
+                      </div>
+                      {n.dokument_referenz && (
+                        <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--ink-dim)' }}>Nachweis: {n.dokument_referenz}</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {istEigentuemer && (
+              <form onSubmit={nachweisHinzufuegen} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div className="field" style={{ flex: 2, minWidth: 180 }}>
+                  <label>Benötigte Unterlage</label>
+                  <input
+                    style={{ width: '100%' }}
+                    value={neueBezeichnung}
+                    onChange={(e) => setNeueBezeichnung(e.target.value)}
+                    placeholder="z. B. Rechnung Fenstertausch"
+                    required
+                  />
+                </div>
+                <div className="field" style={{ minWidth: 140 }}>
+                  <label>Frist (optional)</label>
+                  <input type="date" style={{ width: '100%' }} value={neueFrist} onChange={(e) => setNeueFrist(e.target.value)} />
+                </div>
+                <div className="field" style={{ flex: 1, minWidth: 160 }}>
+                  <label>Nachweis (optional)</label>
+                  <input
+                    style={{ width: '100%' }}
+                    value={neuerDokRef}
+                    onChange={(e) => setNeuerDokRef(e.target.value)}
+                    placeholder="z. B. Rechnungsnr. oder Dateiname"
+                  />
+                </div>
+                <button type="submit" style={knopfStil} disabled={nachweisSendet}>
+                  {nachweisSendet ? 'Speichert …' : 'Hinzufügen'}
+                </button>
+              </form>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }

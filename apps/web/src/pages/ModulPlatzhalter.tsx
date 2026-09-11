@@ -61,7 +61,7 @@ const module: Record<string, ModulInfo> = {
   foerdermittel: {
     titel: 'Fördermittel',
     phase: 'Phase 5',
-    beschreibung: 'Unverbindliche Ersteinschätzung zu KfW-/BAFA-Förderungen kannst du schon heute nutzen (Tab „Fördermittel" im Projekt) – ausdrücklich keine Förderzusage. Die Antragsbegleitung/Nachweisführung folgt später.',
+    beschreibung: 'Unverbindliche Ersteinschätzung zu KfW-/BAFA-Förderungen sowie eine Checkliste für Nachweise und Fristen kannst du schon heute nutzen (Tab „Fördermittel" im Projekt) – ausdrücklich keine Förderzusage.',
   },
   projektmappe: {
     titel: 'Projektmappe',
