@@ -5,10 +5,11 @@ import Marke from '../components/Marke'
 import Kommunikation from './projekt/Kommunikation'
 import { karteStil, eingabeStil, knopfStil, knopfSekundaerStil, pillStil, projektStatusLabel, projektStatusVariante } from './stil'
 
-type Tab = 'kommunikation' | 'bautagebuch' | 'maengel' | 'projektmappe' | 'planung' | 'rechnungen'
+type Tab = 'kommunikation' | 'bautagebuch' | 'maengel' | 'projektmappe' | 'planung' | 'rechnungen' | 'freigaben'
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'planung', label: 'Planung & Status' },
+  { key: 'freigaben', label: 'Freigaben' },
   { key: 'bautagebuch', label: 'Bautagebuch' },
   { key: 'maengel', label: 'Mängel' },
   { key: 'rechnungen', label: 'Rechnungen' },
@@ -100,6 +101,7 @@ export default function Kundenansicht() {
         {projektId && aktivTab === 'bautagebuch' && <BautagebuchLesend projektId={projektId} />}
         {projektId && aktivTab === 'maengel' && <MaengelMelden projektId={projektId} />}
         {projektId && aktivTab === 'rechnungen' && <RechnungenLesend projektId={projektId} />}
+        {projektId && aktivTab === 'freigaben' && <FreigabenBauherr projektId={projektId} />}
         {projektId && aktivTab === 'projektmappe' && <ProjektmappeLesend projektId={projektId} />}
         {projektId && aktivTab === 'kommunikation' && <Kommunikation projektId={projektId} />}
       </div>
@@ -164,6 +166,109 @@ type BautagebuchEintrag = {
   gewerk: string | null
   erstellt_am: string
   fotos: { url: string }[] | null
+}
+
+type NachtragBauherrStatus = 'nicht_erforderlich' | 'ausstehend' | 'freigegeben' | 'abgelehnt'
+type BauherrNachtrag = {
+  id: string
+  titel: string
+  beschreibung: string | null
+  betrag_netto_cents: number
+  bauherr_status: NachtragBauherrStatus
+  bauherr_entschieden_am: string | null
+  erstellt_am: string
+}
+
+const nachtragBauherrLabel: Record<NachtragBauherrStatus, string> = {
+  nicht_erforderlich: 'Keine Freigabe nötig',
+  ausstehend: 'Deine Freigabe ist gefragt',
+  freigegeben: 'Von dir freigegeben',
+  abgelehnt: 'Von dir abgelehnt',
+}
+const nachtragBauherrVariante: Record<NachtragBauherrStatus, 'ok' | 'warn' | 'bad' | 'neutral'> = {
+  nicht_erforderlich: 'neutral',
+  ausstehend: 'warn',
+  freigegeben: 'ok',
+  abgelehnt: 'bad',
+}
+
+// Freigaben für Nachträge, die die Auftragssumme verändern (Konzept 8.6/9:
+// "offene Freigaben" in der digitalen Projektmappe, Transparenz-Grundsatz
+// "ohne nachfragen zu müssen"). Bewusst eine eigene, parallele Freigabespur
+// (nachtraege.bauherr_status) statt einer Sperre der bestehenden internen
+// Freigabe (nachtrag_entscheiden) - siehe Migration 0049. Der Bauherr sieht
+// hier also seine eigene Entscheidung, auch wenn diese die interne
+// Auftragsabwicklung (noch) nicht automatisch blockiert.
+function FreigabenBauherr({ projektId }: { projektId: string }) {
+  const [nachtraege, setNachtraege] = useState<BauherrNachtrag[]>([])
+  const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
+  const [entscheidetGerade, setEntscheidetGerade] = useState<string | null>(null)
+  const [fehler, setFehler] = useState<string | null>(null)
+
+  async function laden() {
+    setLadeStatus('laedt')
+    const { data } = await supabase
+      .from('nachtraege')
+      .select('id, titel, beschreibung, betrag_netto_cents, bauherr_status, bauherr_entschieden_am, erstellt_am')
+      .eq('projekt_id', projektId)
+      .neq('bauherr_status', 'nicht_erforderlich')
+      .order('erstellt_am', { ascending: false })
+    setNachtraege((data ?? []) as BauherrNachtrag[])
+    setLadeStatus('bereit')
+  }
+
+  useEffect(() => {
+    laden()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projektId])
+
+  async function entscheiden(id: string, freigeben: boolean) {
+    setEntscheidetGerade(id)
+    setFehler(null)
+    const { error } = await supabase.rpc('nachtrag_bauherr_entscheiden', { p_nachtrag_id: id, p_freigeben: freigeben })
+    setEntscheidetGerade(null)
+    if (error) { setFehler(error.message); return }
+    await laden()
+  }
+
+  if (ladeStatus === 'laedt') return <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>
+
+  if (nachtraege.length === 0) {
+    return (
+      <div style={karteStil}>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Aktuell nichts, das auf deine Freigabe wartet.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {fehler && <p style={{ margin: 0, fontSize: 12.5, color: 'var(--red)' }}>{fehler}</p>}
+      {nachtraege.map((n) => (
+        <div key={n.id} style={karteStil}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>
+                {n.titel} · {n.betrag_netto_cents >= 0 ? '+' : ''}{euro.format(n.betrag_netto_cents / 100)}
+              </div>
+              {n.beschreibung && <div style={{ fontSize: 12.5, color: 'var(--ink-dim)', marginTop: 4 }}>{n.beschreibung}</div>}
+            </div>
+            <span style={pillStil(nachtragBauherrVariante[n.bauherr_status])}>{nachtragBauherrLabel[n.bauherr_status]}</span>
+          </div>
+          {n.bauherr_status === 'ausstehend' && (
+            <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+              <button style={knopfStil} disabled={entscheidetGerade === n.id} onClick={() => entscheiden(n.id, true)}>
+                Freigeben
+              </button>
+              <button style={knopfSekundaerStil} disabled={entscheidetGerade === n.id} onClick={() => entscheiden(n.id, false)}>
+                Ablehnen
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 type RechnungTyp = 'abschlag' | 'schluss' | 'sonstige'

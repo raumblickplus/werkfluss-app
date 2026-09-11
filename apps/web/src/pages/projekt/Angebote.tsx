@@ -46,6 +46,7 @@ type Nachtrag = {
   beschreibung: string | null
   betrag_netto_cents: number
   status: 'eingereicht' | 'freigegeben' | 'abgelehnt'
+  bauherr_status: 'nicht_erforderlich' | 'ausstehend' | 'freigegeben' | 'abgelehnt'
   erstellt_am: string
 }
 
@@ -53,6 +54,13 @@ const nachtragStatusLabel: Record<Nachtrag['status'], string> = {
   eingereicht: 'Eingereicht',
   freigegeben: 'Freigegeben',
   abgelehnt: 'Abgelehnt',
+}
+
+const bauherrFreigabeLabel: Record<Nachtrag['bauherr_status'], string> = {
+  nicht_erforderlich: '',
+  ausstehend: 'Bauherr: ausstehend',
+  freigegeben: 'Bauherr: freigegeben',
+  abgelehnt: 'Bauherr: abgelehnt',
 }
 
 type LvZeile = { lvPositionId: string; kurztext: string; menge: number; einheit: string | null; einzelpreisEuro: string }
@@ -148,7 +156,7 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
         : Promise.resolve({ data: [] as KatalogPosition[] }),
       supabase
         .from('nachtraege')
-        .select('id, auftrag_id, titel, beschreibung, betrag_netto_cents, status, erstellt_am')
+        .select('id, auftrag_id, titel, beschreibung, betrag_netto_cents, status, bauherr_status, erstellt_am')
         .eq('projekt_id', projektId)
         .order('erstellt_am', { ascending: false }),
     ])
@@ -715,6 +723,18 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
                           >
                             {nachtragStatusLabel[n.status]}
                           </span>
+                          {n.bauherr_status !== 'nicht_erforderlich' && (
+                            <span
+                              title="Getrennte Freigabe durch den Bauherrn - beeinflusst diese interne Freigabe (noch) nicht"
+                              style={{
+                                fontSize: 10.5, fontWeight: 700, padding: '3px 8px', borderRadius: 999, whiteSpace: 'nowrap',
+                                color: n.bauherr_status === 'freigegeben' ? '#2B5A34' : n.bauherr_status === 'abgelehnt' ? 'var(--red)' : 'var(--ink-faint)',
+                                background: 'transparent', border: '1px solid var(--glass-border)',
+                              }}
+                            >
+                              {bauherrFreigabeLabel[n.bauherr_status]}
+                            </span>
+                          )}
                           {istEigentuemer && n.status === 'eingereicht' && (
                             <div style={{ display: 'flex', gap: 8 }}>
                               <button
