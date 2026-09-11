@@ -5,7 +5,7 @@ import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
 import { karteStil, pillStil } from './stil'
 
-type Projekt = { id: string; name: string; status: string }
+type Projekt = { id: string; name: string; status: string; breitengrad: number | null; laengengrad: number | null }
 type Aufgabe = { id: string; titel: string; gewerk: string | null; faellig_am: string | null; status: string; projekt_id: string }
 type Mangel = { id: string; titel: string; dringlichkeit: 'kritisch' | 'mittel' | 'gering'; status: string; frist: string | null; projekt_id: string }
 type Rechnung = { id: string; rechnungsnummer: string; summe_netto_cents: number; status: string; faellig_am: string | null; projekt_id: string }
@@ -153,6 +153,7 @@ export default function Dashboard() {
   const [vorname, setVorname] = useState('')
   const [jetzt, setJetzt] = useState(new Date())
   const [wetter, setWetter] = useState<WetterDaten | 'nicht_verfuegbar' | null>(null)
+  const [baustellenWetter, setBaustellenWetter] = useState<Record<string, WetterDaten | 'nicht_verfuegbar'>>({})
 
   const [projekte, setProjekte] = useState<Projekt[]>([])
   const [aufgaben, setAufgaben] = useState<Aufgabe[]>([])
@@ -197,10 +198,37 @@ export default function Dashboard() {
     )
   }, [])
 
+  // Wetter je aktiver Baustelle mit hinterlegter Adresse - zusätzlich zum
+  // Standort-Wetter oben, nicht als Ersatz dafür (nicht jedes Projekt hat
+  // Koordinaten, und der Nutzer ist ja nicht zwangsläufig gerade dort).
+  useEffect(() => {
+    const baustellen = projekte.filter(
+      (p) => p.status === 'ausfuehrung' && p.breitengrad != null && p.laengengrad != null
+    )
+    if (baustellen.length === 0) return
+    let abgebrochen = false
+    Promise.all(
+      baustellen.map((p) =>
+        fetch(`https://api.open-meteo.com/v1/forecast?latitude=${p.breitengrad}&longitude=${p.laengengrad}&current=temperature_2m,weather_code&timezone=auto`)
+          .then((r) => r.json())
+          .then((data): [string, WetterDaten | 'nicht_verfuegbar'] => [
+            p.id,
+            data?.current
+              ? { temperatur: Math.round(data.current.temperature_2m), art: wetterCodeZuArt(data.current.weather_code) }
+              : 'nicht_verfuegbar',
+          ])
+          .catch((): [string, WetterDaten | 'nicht_verfuegbar'] => [p.id, 'nicht_verfuegbar'])
+      )
+    ).then((eintraege) => {
+      if (!abgebrochen) setBaustellenWetter(Object.fromEntries(eintraege))
+    })
+    return () => { abgebrochen = true }
+  }, [projekte])
+
   const laden = useCallback(async () => {
     setLadeStatus('laedt')
     const [{ data: pData }, { data: aData }, { data: mData }, { data: rData }, { data: abData }, { data: svData }] = await Promise.all([
-      supabase.from('projekte').select('id, name, status'),
+      supabase.from('projekte').select('id, name, status, breitengrad, laengengrad'),
       supabase
         .from('aufgaben')
         .select('id, titel, gewerk, faellig_am, status, projekt_id')
@@ -333,6 +361,27 @@ export default function Dashboard() {
 
       {ladeStatus === 'bereit' && (
         <>
+          {Object.values(baustellenWetter).some((w) => w !== 'nicht_verfuegbar') && (
+            <div style={{ ...karteStil, marginBottom: 24, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 22 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-faint)' }}>
+                Wetter auf deinen Baustellen
+              </div>
+              {projekte
+                .filter((p) => p.status === 'ausfuehrung' && baustellenWetter[p.id] && baustellenWetter[p.id] !== 'nicht_verfuegbar')
+                .map((p) => {
+                  const w = baustellenWetter[p.id] as WetterDaten
+                  return (
+                    <Link key={p.id} to={`/projekte/${p.id}`} style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'var(--ink)' }}>
+                      <div style={{ color: 'var(--orange-deep)' }}><WetterIcon art={w.art} groesse={28} /></div>
+                      <div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 17, fontWeight: 700, lineHeight: 1 }}>{w.temperatur}°C</div>
+                        <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 2 }}>{p.name}</div>
+                      </div>
+                    </Link>
+                  )
+                })}
+            </div>
+          )}
           {/* Grosse Farbblock-Kacheln, asymmetrisch wie im Referenz-Layout */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 18, marginBottom: 32 }}>
             <div className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
@@ -521,9 +570,10 @@ export default function Dashboard() {
           </div>
 
           <p className="footnote">
-            Echter Kalender (Termine, Zeitstrahl je Projekt) und Wetterdaten je Baustellenadresse folgen,
-            sobald Zeitplan als eigenes Modul angebunden ist – aktuell zeigt das Wetter deinen aktuellen
-            Standort. BWA folgt mit der weiteren Buchhaltungstiefe; Freigabekompetenzen lassen sich bereits auf der Team-Seite hinterlegen.
+            Wetter zeigt neben deinem aktuellen Standort jetzt auch die Vorhersage an jeder Baustelle in
+            Ausführung mit hinterlegter Adresse – die Koordinaten kommen automatisch aus der Projektadresse,
+            nichts zusätzlich einzutragen. BWA folgt mit der weiteren Buchhaltungstiefe; Freigabekompetenzen
+            lassen sich bereits auf der Team-Seite hinterlegen.
           </p>
         </>
       )}
