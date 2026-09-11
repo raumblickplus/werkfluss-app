@@ -53,11 +53,6 @@ const module: Record<string, ModulInfo> = {
     phase: 'Phase 6',
     beschreibung: 'Offenes Matching mit Handwerkern und Planern nach dem Vorbild von MyHammer, inklusive verifizierter Referenzen aus abgeschlossenen Projekten.',
   },
-  ausschreibung: {
-    titel: 'Ausschreibung & LV',
-    phase: 'Phase 1',
-    beschreibung: 'Leistungsverzeichnisse automatisch aus VOB-/StLB-Bau-Texten vorbefüllen und Handwerker darüber finden/matchen. Positionen je Gewerk kannst du schon heute anlegen (Tab „Ausschreibung & LV" im Projekt) – die automatische Textvorbefüllung und das Matching folgen später.',
-  },
   foerdermittel: {
     titel: 'Fördermittel',
     phase: 'Phase 5',
