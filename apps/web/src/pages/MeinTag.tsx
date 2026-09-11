@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
+import { KachelLink } from '../components/Kachel'
 import { karteStil, pillStil } from './stil'
 
 // "Mein Tag" - erster, additiver Schritt zu Julians Backlog-Punkt (3)
@@ -139,6 +140,9 @@ export default function MeinTag() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aufgaben, projekte, heuteIso])
 
+  const zielHeute = gruppen[0] ? `/projekte/${gruppen[0][0]}?tab=aufgaben` : null
+  const zielUeberfaellig = ueberfaellig[0] ? `/projekte/${ueberfaellig[0].projekt_id}?tab=aufgaben` : zielHeute
+
   return (
     <AppShell title="Mein Tag" subtitle={aktivFirma?.name} wide>
       {ladeStatus === 'laedt' ? (
@@ -146,7 +150,7 @@ export default function MeinTag() {
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
-            <div className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
+            <KachelLink to={zielHeute} className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
               <div className="block-ticks" />
               <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <PinIcon groesse={14} />
@@ -160,12 +164,12 @@ export default function MeinTag() {
                     ? '1 Einsatzort heute.'
                     : `${gruppen.length} Einsatzorte heute.`}
               </div>
-            </div>
-            <div className={`block ${ueberfaellig.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
+            </KachelLink>
+            <KachelLink to={zielUeberfaellig} className={`block ${ueberfaellig.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
               <div className="block-lbl">{ueberfaellig.length > 0 ? 'Überfällige Aufgaben' : 'Alles im Zeitplan'}</div>
               <div className="block-num" style={{ fontSize: 'clamp(30px, 3.2vw, 48px)' }}>{ueberfaellig.length}</div>
               <div className="block-sub">{aufgaben.length} Aufgabe{aufgaben.length === 1 ? '' : 'n'} heute insgesamt zugewiesen.</div>
-            </div>
+            </KachelLink>
           </div>
 
           {gruppen.length === 0 ? (
