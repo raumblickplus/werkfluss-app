@@ -449,12 +449,33 @@ export default function Finanzen() {
                             <Link to={`/projekte/${p.id}`} style={{ textDecoration: 'none', color: 'var(--ink)', fontWeight: 600 }}>{p.name}</Link>{' '}
                             <span style={pillStil(projektStatusVariante[p.status] ?? 'neutral')}>{projektStatusLabel[p.status] ?? p.status}</span>
                           </td>
-                          <td style={{ padding: '10px' }}>{euro.format(summeBrutto(pAngebote) / 100)}</td>
-                          <td style={{ padding: '10px' }}>{euro.format(summeNetto(pAuftraege) / 100)}</td>
-                          <td style={{ padding: '10px' }}>{euro.format(summeBrutto(pRechnungen) / 100)}</td>
-                          <td style={{ padding: '10px', color: 'var(--olive)' }}>{euro.format(summeBrutto(pBezahlt) / 100)}</td>
-                          <td style={{ padding: '10px 0 10px 10px', color: pOffen.length > 0 ? 'var(--orange-text)' : 'var(--ink-faint)' }}>
-                            {euro.format(summeBrutto(pOffen) / 100)}
+                          <td style={{ padding: '10px' }}>
+                            <Link to={`/projekte/${p.id}?tab=angebote`} style={{ color: 'var(--ink)', textDecoration: 'none' }}>
+                              {euro.format(summeBrutto(pAngebote) / 100)}
+                            </Link>
+                          </td>
+                          <td style={{ padding: '10px' }}>
+                            <Link to={`/projekte/${p.id}?tab=angebote`} style={{ color: 'var(--ink)', textDecoration: 'none' }}>
+                              {euro.format(summeNetto(pAuftraege) / 100)}
+                            </Link>
+                          </td>
+                          <td style={{ padding: '10px' }}>
+                            <Link to={`/projekte/${p.id}?tab=rechnungen`} style={{ color: 'var(--ink)', textDecoration: 'none' }}>
+                              {euro.format(summeBrutto(pRechnungen) / 100)}
+                            </Link>
+                          </td>
+                          <td style={{ padding: '10px' }}>
+                            <Link to={`/projekte/${p.id}?tab=rechnungen`} style={{ color: 'var(--olive)', textDecoration: 'none' }}>
+                              {euro.format(summeBrutto(pBezahlt) / 100)}
+                            </Link>
+                          </td>
+                          <td style={{ padding: '10px 0 10px 10px' }}>
+                            <Link
+                              to={`/projekte/${p.id}?tab=rechnungen`}
+                              style={{ color: pOffen.length > 0 ? 'var(--orange-text)' : 'var(--ink-faint)', textDecoration: 'none' }}
+                            >
+                              {euro.format(summeBrutto(pOffen) / 100)}
+                            </Link>
                           </td>
                         </tr>
                       )

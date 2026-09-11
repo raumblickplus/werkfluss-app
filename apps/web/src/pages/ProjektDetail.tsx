@@ -20,6 +20,7 @@ import Stundenzettel from './projekt/Stundenzettel'
 import Dokumente from './projekt/Dokumente'
 import Leistungsphasen from './projekt/Leistungsphasen'
 import Bedenkenanmeldungen from './projekt/Bedenkenanmeldungen'
+import { tabIcons, gruppenIcons } from './projekt/tabIcons'
 import { projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
 type Projekt = ProjektDetails & { firma_id: string; breitengrad: number | null; laengengrad: number | null }
@@ -160,7 +161,12 @@ export default function ProjektDetail() {
       }
     >
       <div className="tabs">
-        <button className={`tab${aktivTab === 'uebersicht' ? ' active' : ''}`} onClick={() => tabWechseln('uebersicht')}>
+        <button
+          className={`tab${aktivTab === 'uebersicht' ? ' active' : ''}`}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          onClick={() => tabWechseln('uebersicht')}
+        >
+          {tabIcons.uebersicht}
           Übersicht
         </button>
         {tabGruppen.map((g) => {
@@ -172,13 +178,20 @@ export default function ProjektDetail() {
             <button
               key={g.label}
               className={`tab${aktivInGruppe ? ' active' : ''}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               onClick={() => setOffeneGruppe(offen ? null : g.label)}
             >
+              {gruppenIcons[g.label]}
               {g.label} {offen ? '▲' : '▼'}
             </button>
           )
         })}
-        <button className={`tab${aktivTab === 'kommunikation' ? ' active' : ''}`} onClick={() => tabWechseln('kommunikation')}>
+        <button
+          className={`tab${aktivTab === 'kommunikation' ? ' active' : ''}`}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          onClick={() => tabWechseln('kommunikation')}
+        >
+          {tabIcons.kommunikation}
           Kommunikation
         </button>
       </div>
@@ -192,9 +205,10 @@ export default function ProjektDetail() {
               <button
                 key={k}
                 className={`tab${aktivTab === k ? ' active' : ''}`}
-                style={{ fontSize: 12 }}
+                style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 onClick={() => tabWechseln(k)}
               >
+                {tabIcons[k]}
                 {labelVon(k)}
               </button>
             ))}
