@@ -43,11 +43,6 @@ const module: Record<string, ModulInfo> = {
     phase: 'Phase 4',
     beschreibung: 'Vollständige Buchhaltung mit Bankanbindung, DATEV-Export und Mahnwesen – in Kooperation mit einem lizenzierten Partner, da Zahlungsabwicklung eine eigene Regulierungsfrage ist.',
   },
-  kommunikation: {
-    titel: 'Kommunikation',
-    phase: 'Phase 3',
-    beschreibung: 'Projektbezogener Chat, direkte Videotelefonie, Live-Übersetzung (DeepL), KI-To-Do-Vorschläge (Claude) aus dem Gesprächsverlauf und automatische KI-Protokolle aus aufgezeichneten Videobesprechungen (nur mit Zustimmung beider Seiten) kannst du schon heute nutzen (Tab „Kommunikation“ im Projekt).',
-  },
   networking: {
     titel: 'Networking',
     phase: 'Phase 6',
