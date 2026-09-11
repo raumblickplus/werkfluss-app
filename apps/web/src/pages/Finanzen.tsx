@@ -112,6 +112,16 @@ export default function Finanzen() {
     tabAusUrl && tabs.some((t) => t.key === tabAusUrl) ? tabAusUrl : 'uebersicht'
   )
 
+  // Bugfix (11.09.2026, Julian-Meldung): react-router mountet diese Seite bei
+  // einer reinen Query-Param-Änderung (z.B. Klick auf "Buchhaltung" in der
+  // Sidebar, während man schon auf /finanzen ist) nicht neu - der obige
+  // useState-Initialwert griff dann nur beim allerersten Laden, ein Klick
+  // von außen auf einen anderen Tab hat sichtbar gar nichts mehr getan.
+  // Dieser Effekt hält aktivTab mit der URL synchron, auch nach dem ersten Mount.
+  useEffect(() => {
+    setAktivTab(tabAusUrl && tabs.some((t) => t.key === tabAusUrl) ? tabAusUrl : 'uebersicht')
+  }, [tabAusUrl])
+
   function tabWechseln(tab: Tab) {
     setAktivTab(tab)
     setSearchParams(tab === 'uebersicht' ? {} : { tab }, { replace: true })

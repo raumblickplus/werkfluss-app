@@ -45,6 +45,27 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'bedenken', label: 'Bedenkenanmeldung' },
 ]
 
+// Julian-Feedback (11.09.2026): 16 flache Reiter in einer Zeile waren
+// unübersichtlich geworden - mit jedem neuen Kern-Workflow-Feature kam ein
+// weiterer Reiter dazu, ohne dass die Navigation je neu geordnet wurde.
+// Übersicht und Kommunikation bleiben als einzige, immer sichtbare
+// Standalone-Reiter bestehen (am häufigsten gebraucht); der Rest gruppiert
+// sich nach Bauphase/Themenblock, aufklappbar per Klick auf die
+// Gruppen-Überschrift - dieselben 14 Ziele bleiben erreichbar, nur nicht
+// mehr alle gleichzeitig sichtbar. Bewusst noch keine Icons oder frei
+// konfigurierbaren Widgets (Julians zweiter Vorschlag) - das wäre eine
+// größere, eigene Ausbaustufe.
+type TabGruppe = { label: string; tabs: Tab[] }
+const tabGruppen: TabGruppe[] = [
+  { label: 'Planung', tabs: ['ausschreibung', 'leistungsphasen', 'genehmigungen', 'foerdermittel'] },
+  { label: 'Ausführung', tabs: ['bautagebuch', 'aufgaben', 'maengel', 'bedenken', 'technik', 'stundenzettel', 'dokumente'] },
+  { label: 'Abrechnung', tabs: ['angebote', 'rechnungen'] },
+  { label: 'Abschluss', tabs: ['abnahme', 'faelle'] },
+]
+function labelVon(key: Tab) {
+  return tabs.find((t) => t.key === key)?.label ?? key
+}
+
 const PROJEKT_SPALTEN =
   'id, firma_id, name, adresse, status, vorhabenart, gebaeudeklasse, kunde_name, kunde_kontakt, kunde_rechnungsadresse, start_datum, end_datum_geplant, breitengrad, laengengrad'
 
@@ -59,6 +80,23 @@ export default function ProjektDetail() {
   const [aktivTab, setAktivTab] = useState<Tab>(
     tabAusUrl && tabs.some((t) => t.key === tabAusUrl) ? tabAusUrl : 'uebersicht'
   )
+
+  // Bugfix (11.09.2026, Julian-Meldung): dieselbe Seite bleibt gemountet,
+  // wenn man z.B. aus dem Tagesbericht oder Zeitplan per Link auf einen
+  // bestimmten Tab eines Projekts springt, das schon offen ist (oder ein
+  // anderes Projekt bei gleichbleibender Tab-Struktur öffnet) - react-router
+  // ändert dann nur den :id-Parameter bzw. den Query-String, ohne die
+  // Komponente neu zu erzeugen. Der useState-Initialwert oben griff nur beim
+  // allerersten Laden, danach ist ein Klick auf einen Tab-Link von außen
+  // sichtbar ins Leere gelaufen (es blieb auf dem zuletzt aktiven Tab).
+  useEffect(() => {
+    setAktivTab(tabAusUrl && tabs.some((t) => t.key === tabAusUrl) ? tabAusUrl : 'uebersicht')
+  }, [tabAusUrl])
+
+  const [offeneGruppe, setOffeneGruppe] = useState<string | null>(null)
+  useEffect(() => {
+    setOffeneGruppe(tabGruppen.find((g) => g.tabs.includes(aktivTab))?.label ?? null)
+  }, [aktivTab])
 
   // Der Eigentümer (GU, projekte.firma_id) sieht/verwaltet alles im Projekt.
   // Ein eingeladener Teilnehmer (Handwerker, Architekt, Subunternehmer) ist
@@ -122,16 +160,46 @@ export default function ProjektDetail() {
       }
     >
       <div className="tabs">
-        {sichtbareTabs.map((t) => (
-          <button
-            key={t.key}
-            className={`tab${aktivTab === t.key ? ' active' : ''}`}
-            onClick={() => tabWechseln(t.key)}
-          >
-            {t.label}
-          </button>
-        ))}
+        <button className={`tab${aktivTab === 'uebersicht' ? ' active' : ''}`} onClick={() => tabWechseln('uebersicht')}>
+          Übersicht
+        </button>
+        {tabGruppen.map((g) => {
+          const sichtbareGruppenTabs = g.tabs.filter((k) => sichtbareTabs.some((t) => t.key === k))
+          if (sichtbareGruppenTabs.length === 0) return null
+          const aktivInGruppe = sichtbareGruppenTabs.includes(aktivTab)
+          const offen = offeneGruppe === g.label
+          return (
+            <button
+              key={g.label}
+              className={`tab${aktivInGruppe ? ' active' : ''}`}
+              onClick={() => setOffeneGruppe(offen ? null : g.label)}
+            >
+              {g.label} {offen ? '▲' : '▼'}
+            </button>
+          )
+        })}
+        <button className={`tab${aktivTab === 'kommunikation' ? ' active' : ''}`} onClick={() => tabWechseln('kommunikation')}>
+          Kommunikation
+        </button>
       </div>
+
+      {offeneGruppe && (
+        <div className="tabs" style={{ marginTop: -14, marginBottom: 20, paddingLeft: 10, borderBottom: 'none' }}>
+          {tabGruppen
+            .find((g) => g.label === offeneGruppe)!
+            .tabs.filter((k) => sichtbareTabs.some((t) => t.key === k))
+            .map((k) => (
+              <button
+                key={k}
+                className={`tab${aktivTab === k ? ' active' : ''}`}
+                style={{ fontSize: 12 }}
+                onClick={() => tabWechseln(k)}
+              >
+                {labelVon(k)}
+              </button>
+            ))}
+        </div>
+      )}
 
       {aktivTab === 'uebersicht' && <Uebersicht projekt={projekt} onAktualisiert={laden} />}
       {aktivTab === 'ausschreibung' && <Ausschreibung projektId={id} istEigentuemer={istEigentuemer} />}
