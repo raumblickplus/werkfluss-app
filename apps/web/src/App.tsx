@@ -21,6 +21,7 @@ import Netzwerk from './pages/Netzwerk'
 import Projektmappe from './pages/Projektmappe'
 import Kundenansicht from './pages/Kundenansicht'
 import AusschreibungUebersicht from './pages/Ausschreibung'
+import FoerdermittelUebersicht from './pages/Foerdermittel'
 
 export default function App() {
   const { session, ladeStatus, firmen, bauherrProjekte, herstellerListe } = useAuth()
@@ -73,6 +74,7 @@ export default function App() {
       <Route path="/tagesbericht" element={<Tagesbericht />} />
       <Route path="/mein-tag" element={<MeinTag />} />
       <Route path="/ausschreibung" element={<AusschreibungUebersicht />} />
+      <Route path="/foerdermittel" element={<FoerdermittelUebersicht />} />
       <Route path="/netzwerk" element={<Netzwerk />} />
       <Route path="/projektmappe" element={<Projektmappe />} />
       <Route path="/modul/:modulId" element={<ModulPlatzhalter />} />

@@ -53,11 +53,6 @@ const module: Record<string, ModulInfo> = {
     phase: 'Phase 6',
     beschreibung: 'Offenes Matching mit Handwerkern und Planern nach dem Vorbild von MyHammer, inklusive verifizierter Referenzen aus abgeschlossenen Projekten.',
   },
-  foerdermittel: {
-    titel: 'Fördermittel',
-    phase: 'Phase 5',
-    beschreibung: 'Unverbindliche Ersteinschätzung zu KfW-/BAFA-Förderungen sowie eine Checkliste für Nachweise und Fristen kannst du schon heute nutzen (Tab „Fördermittel" im Projekt) – ausdrücklich keine Förderzusage.',
-  },
   projektmappe: {
     titel: 'Projektmappe',
     phase: 'Phase 3',
