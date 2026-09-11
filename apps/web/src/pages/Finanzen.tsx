@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
+import { KachelLink } from '../components/Kachel'
 import { karteStil, pillStil, projektStatusLabel, projektStatusVariante, eingabeStil, knopfStil, knopfSekundaerStil } from './stil'
 import { druckfensterOeffnen, dokumentInFensterSchreiben, mahnungDruckHtml, type DruckFirma } from '../lib/druckExport'
 
@@ -240,6 +241,12 @@ export default function Finanzen() {
     (p) => angebote.some((a) => a.projekt_id === p.id) || auftraege.some((a) => a.projekt_id === p.id) || rechnungen.some((r) => r.projekt_id === p.id)
   )
 
+  const zielOffeneRechnung = offeneRechnungenSortiert[0] ? `/projekte/${offeneRechnungenSortiert[0].projekt_id}?tab=rechnungen` : null
+  const zielUeberfaelligeRechnung = ueberfaelligeRechnungen[0] ? `/projekte/${ueberfaelligeRechnungen[0].projekt_id}?tab=rechnungen` : null
+  const zielAuftraege = aktiveAuftraege[0] ? `/projekte/${aktiveAuftraege[0].projekt_id}?tab=angebote` : null
+  const zielAngebote = angeboteVersendetSortiert[0] ? `/projekte/${angeboteVersendetSortiert[0].projekt_id}?tab=angebote` : null
+  const zielFinanzProjekt = projekteMitFinanzen[0] ? `/projekte/${projekteMitFinanzen[0].id}?tab=rechnungen` : null
+
   const heroText = useMemo(() => {
     const angeboteHinweis = angeboteVersendet.length > 0
       ? `${angeboteVersendet.length} Angebot${angeboteVersendet.length === 1 ? '' : 'e'} warten noch auf Rückmeldung`
@@ -295,7 +302,7 @@ export default function Finanzen() {
         ) : (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 14 }}>
-              <a href="#offene-rechnungen" className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260, textDecoration: 'none' }}>
+              <KachelLink to={zielOffeneRechnung} className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
                 <div className="block-ticks" />
                 <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <EuroIcon groesse={14} />
@@ -303,34 +310,34 @@ export default function Finanzen() {
                 </div>
                 <div className="block-num" style={{ fontSize: 'clamp(34px, 3.6vw, 56px)' }}>{euro.format(offeneForderungenCents / 100)}</div>
                 <div className="block-sub">{heroText.titel}</div>
-              </a>
-              <a href="#offene-rechnungen" className={`block ${ueberfaelligeSummeCents > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielUeberfaelligeRechnung} className={`block ${ueberfaelligeSummeCents > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
                 <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {ueberfaelligeSummeCents > 0 && <WarnBlockIcon />}
                   {ueberfaelligeSummeCents > 0 ? 'Überfällig' : 'Alles im Zeitplan'}
                 </div>
                 <div className="block-num" style={{ fontSize: 'clamp(30px, 3.2vw, 48px)' }}>{euro.format(ueberfaelligeSummeCents / 100)}</div>
                 <div className="block-sub">{heroText.subtitel}</div>
-              </a>
+              </KachelLink>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
-              <a href="#finanzen-je-projekt" className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              <KachelLink to={zielAuftraege} className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Aktive Aufträge (netto)</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{euro.format(aktiveAuftragsSummeCents / 100)}</div>
-              </a>
-              <a href="#angebote-in-pruefung" className="block olive" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielAngebote} className="block olive" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Angebote in Prüfung</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{euro.format(angeboteVersendetSummeCents / 100)}</div>
-              </a>
-              <a href="#offene-rechnungen" className="block cream" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielOffeneRechnung} className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Rechnungen offen</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(offeneRechnungen.length)}</div>
-              </a>
-              <a href="#finanzen-je-projekt" className="block dark" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielFinanzProjekt} className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Projekte mit Finanzdaten</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(projekteMitFinanzen.length)}</div>
-              </a>
+              </KachelLink>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 20, marginBottom: 24 }}>

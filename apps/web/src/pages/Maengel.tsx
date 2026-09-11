@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
+import { KachelLink } from '../components/Kachel'
 import { karteStil, pillStil, projektStatusLabel, projektStatusVariante } from './stil'
 
 type ProjektZeile = { id: string; name: string; status: string }
@@ -106,6 +107,11 @@ export default function Maengel() {
 
   const projekteMitMaengeln = projekte.filter((p) => maengel.some((m) => m.projekt_id === p.id))
 
+  const zielDringend = dringendeMaengel[0] ? `/projekte/${dringendeMaengel[0].projekt_id}?tab=maengel` : null
+  const zielKritisch = kritischeMaengel[0] ? `/projekte/${kritischeMaengel[0].projekt_id}?tab=maengel` : null
+  const zielUeberfaellig = ueberfaelligeMaengel[0] ? `/projekte/${ueberfaelligeMaengel[0].projekt_id}?tab=maengel` : null
+  const zielProjekt = projekteMitMaengeln[0] ? `/projekte/${projekteMitMaengeln[0].id}?tab=maengel` : null
+
   const heroText = useMemo(() => {
     if (kritischeMaengel.length > 0) {
       const n = kritischeMaengel.length
@@ -141,7 +147,7 @@ export default function Maengel() {
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 14 }}>
-              <a href="#dringende-maengel" className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260, textDecoration: 'none' }}>
+              <KachelLink to={zielDringend} className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
                 <div className="block-ticks" />
                 <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <WarnIcon groesse={14} />
@@ -149,34 +155,34 @@ export default function Maengel() {
                 </div>
                 <div className="block-num" style={{ fontSize: 'clamp(34px, 3.6vw, 56px)' }}>{offeneMaengel.length}</div>
                 <div className="block-sub">{heroText.titel}</div>
-              </a>
-              <a href="#dringende-maengel" className={`block ${kritischeMaengel.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielKritisch} className={`block ${kritischeMaengel.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
                 <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {kritischeMaengel.length > 0 && <WarnIcon groesse={14} />}
                   {kritischeMaengel.length > 0 ? 'Kritische Mängel' : 'Kritisch'}
                 </div>
                 <div className="block-num" style={{ fontSize: 'clamp(30px, 3.2vw, 48px)' }}>{kritischeMaengel.length}</div>
                 <div className="block-sub">{heroText.subtitel}</div>
-              </a>
+              </KachelLink>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
-              <a href="#dringende-maengel" className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              <KachelLink to={zielUeberfaellig} className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Über der Frist</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(ueberfaelligeMaengel.length)}</div>
-              </a>
-              <a href="#maengel-je-projekt" className="block olive" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielProjekt} className="block olive" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Abnahme-Quote</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{abnahmeQuote === null ? '–' : `${abnahmeQuote}%`}</div>
-              </a>
-              <a href="#maengel-je-projekt" className="block cream" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielProjekt} className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Projekte mit Mängeln</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(projekteMitMaengeln.length)}</div>
-              </a>
-              <a href="#maengel-je-projekt" className="block dark" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielProjekt} className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Mängel gesamt</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(maengel.length)}</div>
-              </a>
+              </KachelLink>
             </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 20, marginBottom: 24 }}>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
+import { KachelLink } from '../components/Kachel'
 import { karteStil, pillStil, knopfSekundaerStil } from './stil'
 import { UebersetzterText } from '../components/UebersetzterText'
 
@@ -163,6 +164,11 @@ export default function Tagesbericht() {
   const projekteOhneBericht = aktiveProjekte.filter((p) => !projekteMitBerichtIds.has(p.id))
   const kritischeMaengel = maengel.filter((m) => m.dringlichkeit === 'kritisch')
 
+  const zielBerichte = eintraege[0] ? `/projekte/${eintraege[0].projekt_id}?tab=bautagebuch` : null
+  const zielOhneBericht = projekteOhneBericht[0] ? `/projekte/${projekteOhneBericht[0].id}?tab=bautagebuch` : null
+  const zielMaengel = maengel[0] ? `/projekte/${maengel[0].projekt_id}?tab=maengel` : null
+  const zielKritischeMaengel = kritischeMaengel[0] ? `/projekte/${kritischeMaengel[0].projekt_id}?tab=maengel` : null
+
   const heroText = useMemo(() => {
     const tagWort = istHeute ? 'heute' : 'an diesem Tag'
     if (aktiveProjekte.length === 0) {
@@ -300,7 +306,7 @@ export default function Tagesbericht() {
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 14 }}>
-              <a href="#berichte-des-tages" className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260, textDecoration: 'none' }}>
+              <KachelLink to={zielBerichte} className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
                 <div className="block-ticks" />
                 <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <BuchIcon groesse={14} />
@@ -308,31 +314,31 @@ export default function Tagesbericht() {
                 </div>
                 <div className="block-num" style={{ fontSize: 'clamp(34px, 3.6vw, 56px)' }}>{eintraege.length}</div>
                 <div className="block-sub">{heroText.titel}</div>
-              </a>
-              <a href="#projekte-ohne-bericht" className={`block ${projekteOhneBericht.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielOhneBericht} className={`block ${projekteOhneBericht.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
                 <div className="block-lbl">Ohne Bericht</div>
                 <div className="block-num" style={{ fontSize: 'clamp(30px, 3.2vw, 48px)' }}>{projekteOhneBericht.length}</div>
                 <div className="block-sub">{heroText.subtitel}</div>
-              </a>
+              </KachelLink>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
-              <a href="#berichte-des-tages" className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              <KachelLink to={zielBerichte} className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Berichte</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(eintraege.length)}</div>
-              </a>
-              <a href="#projekte-ohne-bericht" className="block olive" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielOhneBericht} className="block olive" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Ohne Bericht</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(projekteOhneBericht.length)}</div>
-              </a>
-              <a href="#neue-maengel" className="block cream" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielMaengel} className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Neue Mängel</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(maengel.length)}</div>
-              </a>
-              <a href="#neue-maengel" className="block dark" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+              </KachelLink>
+              <KachelLink to={zielKritischeMaengel} className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
                 <div className="block-lbl">Davon kritisch</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(kritischeMaengel.length)}</div>
-              </a>
+              </KachelLink>
             </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 20, marginBottom: 24 }}>

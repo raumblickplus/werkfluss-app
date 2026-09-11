@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
+import { KachelLink } from '../components/Kachel'
 import { karteStil, pillStil } from './stil'
 
 type ProjektZeile = {
@@ -151,6 +152,11 @@ export default function Zeitplan() {
   const naeher = sichtbareAufgaben.filter((a) => a.faellig_am! >= heuteIso && a.faellig_am! <= dreiWochenGrenze)
   const weitereAnzahl = sichtbareAufgaben.length - ueberfaellig.length - naeher.length
 
+  const zielZeitstrahl = gewerkeZeilen[0] ? `/projekte/${gewerkeZeilen[0].projektId}?tab=aufgaben` : null
+  const zielUeberfaellig = ueberfaellig[0] ? `/projekte/${ueberfaellig[0].projekt_id}?tab=aufgaben` : null
+  const zielNaeher = naeher[0] ? `/projekte/${naeher[0].projekt_id}?tab=aufgaben` : null
+  const zielOhneTermine = projekteOhneTermine[0] ? `/projekte/${projekteOhneTermine[0].id}?tab=aufgaben` : null
+
   const naeherGruppiert: { datum: string; eintraege: Aufgabe[] }[] = []
   for (const a of naeher) {
     const letzte = naeherGruppiert[naeherGruppiert.length - 1]
@@ -173,22 +179,22 @@ export default function Zeitplan() {
             </label>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
-            <a href="#zeitstrahl" className="block dark" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+            <KachelLink to={zielZeitstrahl} className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
               <div className="block-lbl">Gewerke im Zeitstrahl</div>
               <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{gewerkeAnzahl}</div>
-            </a>
-            <a href="#anstehende-termine" className={`block ${ueberfaellig.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+            </KachelLink>
+            <KachelLink to={zielUeberfaellig} className={`block ${ueberfaellig.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 3', minWidth: 160 }}>
               <div className="block-lbl">Überfällige Termine</div>
               <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{ueberfaellig.length}</div>
-            </a>
-            <a href="#anstehende-termine" className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+            </KachelLink>
+            <KachelLink to={zielNaeher} className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
               <div className="block-lbl">Nächste 3 Wochen</div>
               <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{naeher.length}</div>
-            </a>
-            <a href="#projekte-ohne-termine" className="block cream" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
+            </KachelLink>
+            <KachelLink to={zielOhneTermine} className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
               <div className="block-lbl">Projekte ohne Termine</div>
               <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{projekteOhneTermine.length}</div>
-            </a>
+            </KachelLink>
           </div>
 
           <div id="zeitstrahl" style={{ ...karteStil, marginBottom: 24, overflowX: 'auto', scrollMarginTop: 20 }}>
