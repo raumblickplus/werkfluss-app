@@ -38,6 +38,70 @@ export type DruckPosition = {
 
 const STANDARD_AKZENT = '#C1552F'
 
+// Sprache als reine Dokument-Option (Julians "Baukasten"-Referenz zeigt
+// einen Sprache DE/EN-Umschalter im Editor) - rein statische Label-Übersetzung
+// für die feststehenden Beschriftungen einer Rechnung, keine Übersetzungs-API
+// nötig (anders als die freien Texte in Bautagebuch/Chat, 0046). Bewusst nur
+// für Rechnungen umgesetzt, da dort die Baukasten-Anfrage konkret war -
+// Angebot/Mahnung bleiben vorerst deutschsprachig.
+export type Sprache = 'de' | 'en'
+
+const RECHNUNG_LABELS: Record<Sprache, {
+  titel: string
+  empfaenger: string
+  nr: string
+  rechnungsdatum: string
+  faelligAm: string
+  faelligSofort: string
+  bestellreferenz: string
+  leistung: string
+  menge: string
+  einzelpreis: string
+  gesamt: string
+  betragNetto: string
+  netto: string
+  ust: (satz: number) => string
+  gesamtbetrag: string
+  fussnote: string
+}> = {
+  de: {
+    titel: 'Rechnung',
+    empfaenger: 'Rechnungsempfänger',
+    nr: 'Nr.',
+    rechnungsdatum: 'Rechnungsdatum',
+    faelligAm: 'Fällig am',
+    faelligSofort: 'Fällig sofort ohne Abzug',
+    bestellreferenz: 'Bestellreferenz',
+    leistung: 'Leistung',
+    menge: 'Menge',
+    einzelpreis: 'Einzelpreis',
+    gesamt: 'Gesamt',
+    betragNetto: 'Betrag netto',
+    netto: 'Netto',
+    ust: (satz) => `zzgl. ${satz}% USt.`,
+    gesamtbetrag: 'Gesamtbetrag',
+    fussnote: 'Diese Rechnung wurde maschinell erstellt und ist ohne Unterschrift gültig. Keine steuerliche oder rechtliche Beratung – bei Rückfragen zur Umsatzsteuer wenden Sie sich an Ihre Steuerkanzlei.',
+  },
+  en: {
+    titel: 'Invoice',
+    empfaenger: 'Bill to',
+    nr: 'No.',
+    rechnungsdatum: 'Invoice date',
+    faelligAm: 'Due date',
+    faelligSofort: 'Due immediately, no deduction',
+    bestellreferenz: 'PO reference',
+    leistung: 'Description',
+    menge: 'Qty',
+    einzelpreis: 'Unit price',
+    gesamt: 'Total',
+    betragNetto: 'Amount (net)',
+    netto: 'Net',
+    ust: (satz) => `plus ${satz}% VAT`,
+    gesamtbetrag: 'Total amount',
+    fussnote: 'This invoice was generated automatically and is valid without a signature. Not tax or legal advice – please contact your tax advisor with questions about VAT.',
+  },
+}
+
 const euro = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
 const centsZuEuro = (cents: number) => euro.format(cents / 100)
 const datumDe = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('de-DE') : '–')
@@ -196,55 +260,75 @@ export function rechnungDruckHtml(params: {
   kundeName: string | null
   kundeRechnungsadresse: string | null
   auftragBezeichnung: string | null
+  bestellreferenz?: string | null
+  positionen?: DruckPosition[]
+  sprache?: Sprache
 }) {
   const {
     rechnungsnummer, typLabel, erstelltAm, faelligAm, summeNettoCents, mwstSatz,
     firma, projektName, kundeName, kundeRechnungsadresse, auftragBezeichnung,
+    bestellreferenz, positionen, sprache = 'de',
   } = params
+  const t = RECHNUNG_LABELS[sprache]
+  const geldFormat = new Intl.NumberFormat(sprache === 'en' ? 'en-IE' : 'de-DE', { style: 'currency', currency: 'EUR' })
+  const geld = (cents: number) => geldFormat.format(cents / 100)
+  const datum = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(sprache === 'en' ? 'en-GB' : 'de-DE') : '–')
+
   const mwstCents = Math.round(summeNettoCents * (mwstSatz / 100))
   const bruttoCents = summeNettoCents + mwstCents
   const leistungstext = auftragBezeichnung
     ? `${escapeHtml(typLabel)} – ${escapeHtml(auftragBezeichnung)}, Projekt „${escapeHtml(projektName)}"`
     : `${escapeHtml(typLabel)} – Projekt „${escapeHtml(projektName)}"`
 
+  const positionenVorhanden = positionen && positionen.length > 0
+  const kopfzeilen = positionenVorhanden
+    ? `<tr><th>${t.leistung}</th><th class="zahl">${t.menge}</th><th class="zahl">${t.einzelpreis}</th><th class="zahl">${t.gesamt}</th></tr>`
+    : `<tr><th>${t.leistung}</th><th class="zahl">${t.betragNetto}</th></tr>`
+  const positionsZeilen = positionenVorhanden
+    ? positionen!.map((p) => `
+        <tr>
+          <td>${escapeHtml(p.kurztext)}</td>
+          <td class="zahl">${p.menge != null ? `${p.menge} ${p.einheit ?? ''}` : '–'}</td>
+          <td class="zahl">${p.einzelpreis_cents != null ? geld(p.einzelpreis_cents) : '–'}</td>
+          <td class="zahl">${p.menge != null && p.einzelpreis_cents != null ? geld(Math.round(p.menge * p.einzelpreis_cents)) : '–'}</td>
+        </tr>`).join('')
+    : `<tr><td>${leistungstext}</td><td class="zahl">${geld(summeNettoCents)}</td></tr>`
+
   return `
     <div class="kopf">
       ${firmenkopf(firma)}
       <div>
-        <div class="dok-titel">Rechnung</div>
+        <div class="dok-titel">${t.titel}</div>
         <div class="dok-meta">
-          Nr. ${escapeHtml(rechnungsnummer)}<br />
-          Rechnungsdatum: ${datumDe(erstelltAm)}<br />
-          ${faelligAm ? `Fällig am: ${datumDe(faelligAm)}` : 'Fällig sofort ohne Abzug'}
+          ${t.nr} ${escapeHtml(rechnungsnummer)}<br />
+          ${t.rechnungsdatum}: ${datum(erstelltAm)}<br />
+          ${faelligAm ? `${t.faelligAm}: ${datum(faelligAm)}` : t.faelligSofort}
+          ${bestellreferenz ? `<br />${t.bestellreferenz}: ${escapeHtml(bestellreferenz)}` : ''}
         </div>
       </div>
     </div>
 
     <div class="an">
-      <div class="an-label">Rechnungsempfänger</div>
+      <div class="an-label">${t.empfaenger}</div>
       <div class="an-name">${escapeHtml(kundeName ?? projektName)}</div>
       ${kundeRechnungsadresse ? `<div>${escapeHtml(kundeRechnungsadresse).replace(/\n/g, '<br />')}</div>` : ''}
     </div>
 
     <table>
-      <thead>
-        <tr><th>Leistung</th><th class="zahl">Betrag netto</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>${leistungstext}</td><td class="zahl">${centsZuEuro(summeNettoCents)}</td></tr>
-      </tbody>
+      <thead>${kopfzeilen}</thead>
+      <tbody>${positionsZeilen}</tbody>
     </table>
 
     <div class="zwischensummen">
-      <div><span>Netto</span><span>${centsZuEuro(summeNettoCents)}</span></div>
-      <div><span>zzgl. ${mwstSatz}% USt.</span><span>${centsZuEuro(mwstCents)}</span></div>
+      <div><span>${t.netto}</span><span>${geld(summeNettoCents)}</span></div>
+      <div><span>${t.ust(mwstSatz)}</span><span>${geld(mwstCents)}</span></div>
     </div>
     <div class="summe-leiste">
-      <span class="label">Gesamtbetrag</span>
-      <span class="betrag">${centsZuEuro(bruttoCents)}</span>
+      <span class="label">${t.gesamtbetrag}</span>
+      <span class="betrag">${geld(bruttoCents)}</span>
     </div>
 
-    ${fusszeile(firma, 'Diese Rechnung wurde maschinell erstellt und ist ohne Unterschrift gültig. Keine steuerliche oder rechtliche Beratung – bei Rückfragen zur Umsatzsteuer wenden Sie sich an Ihre Steuerkanzlei.')}
+    ${fusszeile(firma, t.fussnote)}
   `
 }
 
