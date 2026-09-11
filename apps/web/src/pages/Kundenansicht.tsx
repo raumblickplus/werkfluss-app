@@ -5,12 +5,13 @@ import Marke from '../components/Marke'
 import Kommunikation from './projekt/Kommunikation'
 import { karteStil, eingabeStil, knopfStil, knopfSekundaerStil, pillStil, projektStatusLabel, projektStatusVariante } from './stil'
 
-type Tab = 'kommunikation' | 'bautagebuch' | 'maengel' | 'projektmappe' | 'planung'
+type Tab = 'kommunikation' | 'bautagebuch' | 'maengel' | 'projektmappe' | 'planung' | 'rechnungen'
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'planung', label: 'Planung & Status' },
   { key: 'bautagebuch', label: 'Bautagebuch' },
   { key: 'maengel', label: 'Mängel' },
+  { key: 'rechnungen', label: 'Rechnungen' },
   { key: 'projektmappe', label: 'Projektmappe' },
   { key: 'kommunikation', label: 'Kommunikation' },
 ]
@@ -98,6 +99,7 @@ export default function Kundenansicht() {
         {projektId && aktivTab === 'planung' && <PlanungStatus projekt={projekt} />}
         {projektId && aktivTab === 'bautagebuch' && <BautagebuchLesend projektId={projektId} />}
         {projektId && aktivTab === 'maengel' && <MaengelMelden projektId={projektId} />}
+        {projektId && aktivTab === 'rechnungen' && <RechnungenLesend projektId={projektId} />}
         {projektId && aktivTab === 'projektmappe' && <ProjektmappeLesend projektId={projektId} />}
         {projektId && aktivTab === 'kommunikation' && <Kommunikation projektId={projektId} />}
       </div>
@@ -162,6 +164,98 @@ type BautagebuchEintrag = {
   gewerk: string | null
   erstellt_am: string
   fotos: { url: string }[] | null
+}
+
+type RechnungTyp = 'abschlag' | 'schluss' | 'sonstige'
+type RechnungStatus = 'offen' | 'bezahlt' | 'ueberfaellig' | 'storniert'
+type BauherrRechnung = {
+  id: string
+  rechnungsnummer: string
+  typ: RechnungTyp
+  summe_netto_cents: number
+  mwst_satz: number
+  status: RechnungStatus
+  faellig_am: string | null
+  erstellt_am: string
+}
+
+const rechnungTypLabel: Record<RechnungTyp, string> = {
+  abschlag: 'Abschlagsrechnung',
+  schluss: 'Schlussrechnung',
+  sonstige: 'Sonstige',
+}
+const rechnungStatusLabel: Record<RechnungStatus, string> = {
+  offen: 'Offen',
+  bezahlt: 'Bezahlt',
+  ueberfaellig: 'Überfällig',
+  storniert: 'Storniert',
+}
+const rechnungStatusVariante: Record<RechnungStatus, 'ok' | 'warn' | 'bad' | 'neutral'> = {
+  offen: 'neutral',
+  bezahlt: 'ok',
+  ueberfaellig: 'bad',
+  storniert: 'neutral',
+}
+const euro = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
+const bruttoText = (nettoCents: number, mwstSatz: number) => euro.format((nettoCents * (1 + mwstSatz / 100)) / 100)
+
+// Read-only Rechnungsübersicht für den Bauherrn (Konzept 8.6/9: die digitale
+// Projektmappe soll "Rechnungen und Zahlungsstatus" zeigen, Teil des
+// Transparenz-Grundsatzes "ohne nachfragen zu müssen"). Zeigt bewusst nur
+// Bruttosumme, Fälligkeit und Zahlungsstatus - keine LV-Positionen, kein
+// Leistungsstand, keine Möglichkeit, selbst etwas zu ändern; das bleibt
+// Sache der ausführenden Firma in Rechnungen.tsx.
+function RechnungenLesend({ projektId }: { projektId: string }) {
+  const [rechnungen, setRechnungen] = useState<BauherrRechnung[]>([])
+  const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
+
+  useEffect(() => {
+    setLadeStatus('laedt')
+    supabase
+      .from('rechnungen_ausgang')
+      .select('id, rechnungsnummer, typ, summe_netto_cents, mwst_satz, status, faellig_am, erstellt_am')
+      .eq('projekt_id', projektId)
+      .order('erstellt_am', { ascending: false })
+      .then(({ data }) => {
+        setRechnungen((data ?? []) as BauherrRechnung[])
+        setLadeStatus('bereit')
+      })
+  }, [projektId])
+
+  if (ladeStatus === 'laedt') return <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>
+
+  if (rechnungen.length === 0) {
+    return (
+      <div style={karteStil}>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Noch keine Rechnungen für dieses Projekt.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {rechnungen.map((r) => (
+        <div key={r.id} style={karteStil}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{r.rechnungsnummer} · {rechnungTypLabel[r.typ]}</div>
+              {r.faellig_am && (
+                <div style={{ fontSize: 12, color: 'var(--ink-faint)', marginTop: 4 }}>
+                  Fällig am {new Date(r.faellig_am).toLocaleDateString('de-DE')}
+                </div>
+              )}
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{bruttoText(r.summe_netto_cents, r.mwst_satz)}</div>
+              <span style={{ ...pillStil(rechnungStatusVariante[r.status]), marginTop: 4, display: 'inline-block' }}>
+                {rechnungStatusLabel[r.status]}
+              </span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function BautagebuchLesend({ projektId }: { projektId: string }) {
