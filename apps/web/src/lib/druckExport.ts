@@ -130,13 +130,20 @@ function firmenkopf(firma: DruckFirma) {
   `
 }
 
-function fusszeile(firma: DruckFirma, zusatz?: string) {
+const FUSSZEILE_LABELS: Record<Sprache, { adresse: string; bank: string; steuer: string }> = {
+  de: { adresse: 'Adresse', bank: 'Bankverbindung', steuer: 'Steuernummer / Kontakt' },
+  en: { adresse: 'Address', bank: 'Bank details', steuer: 'Tax ID / Contact' },
+}
+
+function fusszeile(firma: DruckFirma, zusatz?: string, sprache: Sprache = 'de') {
+  const l = FUSSZEILE_LABELS[sprache]
   const bankZeile = firma.iban ? `IBAN ${escapeHtml(firma.iban)}<br />${escapeHtml(firma.name)}` : '–'
+  const steuerLabel = sprache === 'en' ? 'VAT ID' : 'USt-IdNr.'
   return `
     <div class="fuss-grid">
-      <div><div class="fuss-label">${ICON_PIN} Adresse</div><div>${firma.adresse ? escapeHtml(firma.adresse) : escapeHtml(firma.name)}</div></div>
-      <div><div class="fuss-label">${ICON_BANK} Bankverbindung</div><div>${bankZeile}</div></div>
-      <div><div class="fuss-label">${ICON_HASH} Steuernummer / Kontakt</div><div>${firma.ust_id ? `USt-IdNr. ${escapeHtml(firma.ust_id)}<br />` : ''}${firma.email ? `${ICON_MAIL} ${escapeHtml(firma.email)}` : ''}</div></div>
+      <div><div class="fuss-label">${ICON_PIN} ${l.adresse}</div><div>${firma.adresse ? escapeHtml(firma.adresse) : escapeHtml(firma.name)}</div></div>
+      <div><div class="fuss-label">${ICON_BANK} ${l.bank}</div><div>${bankZeile}</div></div>
+      <div><div class="fuss-label">${ICON_HASH} ${l.steuer}</div><div>${firma.ust_id ? `${steuerLabel} ${escapeHtml(firma.ust_id)}<br />` : ''}${firma.email ? `${ICON_MAIL} ${escapeHtml(firma.email)}` : ''}</div></div>
     </div>
     ${zusatz ? `<p class="fussnote">${zusatz}</p>` : ''}
   `
@@ -328,7 +335,7 @@ export function rechnungDruckHtml(params: {
       <span class="betrag">${geld(bruttoCents)}</span>
     </div>
 
-    ${fusszeile(firma, t.fussnote)}
+    ${fusszeile(firma, t.fussnote, sprache)}
   `
 }
 
