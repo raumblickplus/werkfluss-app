@@ -49,6 +49,7 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
   const { aktivFirma } = useAuth()
   const [druckFirma, setDruckFirma] = useState<DruckFirma | null>(null)
   const [projektFuerDruck, setProjektFuerDruck] = useState<{ name: string; kunde_name: string | null; kunde_rechnungsadresse: string | null } | null>(null)
+  const [druckFehler, setDruckFehler] = useState<string | null>(null)
   const [rechnungen, setRechnungen] = useState<Rechnung[]>([])
   const [auftraege, setAuftraege] = useState<AuftragOption[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
@@ -106,7 +107,15 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
         .select('name, rechtsform, adresse, ust_id, telefon, email, iban')
         .eq('id', aktivFirma.id)
         .maybeSingle()
-        .then(({ data }) => { if (data) setDruckFirma(data as DruckFirma) })
+        .then(({ data, error }) => {
+          if (data) setDruckFirma(data as DruckFirma)
+          // Bugfix (12.09.2026, Julian-Meldung "PDF-Export funktioniert
+          // nicht"): häufigste Ursache ist, dass Migration 0051 (Telefon/
+          // E-Mail/IBAN für Firmen) auf der Datenbank noch fehlt - dann
+          // schlägt genau diese Abfrage fehl und der PDF-Button blieb
+          // bisher stillschweigend deaktiviert, ohne erkennbaren Grund.
+          if (error) setDruckFehler(`Firmendaten für den PDF-Kopf konnten nicht geladen werden (${error.message}). Wurde Migration 0051 bereits mit "supabase db push" eingespielt?`)
+        })
     }
     supabase
       .from('projekte')
@@ -227,6 +236,11 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
 
   return (
     <div>
+      {druckFehler && (
+        <div style={{ ...karteStil, marginBottom: 16, padding: '12px 16px', borderColor: 'var(--red)' }}>
+          <p style={{ margin: 0, fontSize: 12.5, color: 'var(--red)' }}>{druckFehler}</p>
+        </div>
+      )}
       <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--ink-faint)' }}>
         Für den Anfang: Rechnungsnummer und Fälligkeit trägst du noch selbst ein/pflegst sie.
         Eine lückenlose, GoBD-taugliche Nummerierung mit echter Buchhaltungsanbindung (DATEV-Export etc.)

@@ -89,12 +89,30 @@ ${inhalt}
 </html>`
 }
 
-export function dokumentDrucken(titel: string, inhalt: string) {
+// Bugfix (12.09.2026, Julian-Meldung "PDF-Export funktioniert nicht"):
+// window.open() muss synchron im Klick-Handler passieren, sonst werten
+// Safari/Chrome den Aufruf nicht mehr als direkte Reaktion auf eine
+// Nutzer-Interaktion und blocken das Fenster stillschweigend (kein Fehler,
+// einfach nichts sichtbares) - das passierte in Angebote.tsx, wo vor dem
+// window.open() erst asynchron Firma/Positionen nachgeladen wurden. Fix:
+// das Fenster wird jetzt IMMER zuerst sofort geöffnet (mit einer
+// "Lädt..."-Zwischenseite), der eigentliche Inhalt kommt erst danach rein,
+// sobald er fertig ist - so bleibt der Aufruf auch bei nachgelagertem
+// asynchronem Laden im Kontext der Nutzer-Interaktion.
+export function druckfensterOeffnen(): Window | null {
   const fenster = window.open('', '_blank', 'width=880,height=1120')
   if (!fenster) {
-    alert('Das Druckfenster wurde vom Browser blockiert. Bitte Pop-ups für diese Seite erlauben und erneut versuchen.')
-    return
+    alert('Das Druckfenster wurde vom Browser blockiert. Bitte Pop-ups für diese Seite erlauben und den Button erneut anklicken.')
+    return null
   }
+  fenster.document.open()
+  fenster.document.write(grundgeruest('Wird vorbereitet …', '<p style="padding:64px 56px;color:#8a897f;">Dokument wird vorbereitet …</p>'))
+  fenster.document.close()
+  fenster.focus()
+  return fenster
+}
+
+export function dokumentInFensterSchreiben(fenster: Window, titel: string, inhalt: string) {
   fenster.document.open()
   fenster.document.write(grundgeruest(titel, inhalt))
   fenster.document.close()
@@ -103,6 +121,15 @@ export function dokumentDrucken(titel: string, inhalt: string) {
   // hat, bevor der Druckdialog erscheint - ohne das erscheint auf manchen
   // Browsern eine leere oder halb gerenderte erste Druckseite.
   setTimeout(() => fenster.print(), 350)
+}
+
+// Bequemlichkeits-Variante für den Fall, dass Titel und Inhalt schon fertig
+// vorliegen (kein asynchrones Nachladen mehr nötig) - öffnet und befüllt in
+// einem Aufruf.
+export function dokumentDrucken(titel: string, inhalt: string) {
+  const fenster = druckfensterOeffnen()
+  if (!fenster) return
+  dokumentInFensterSchreiben(fenster, titel, inhalt)
 }
 
 export function rechnungDruckHtml(params: {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { useAuth } from '../../lib/AuthContext'
 import { eingabeStil, knopfStil, knopfSekundaerStil, karteStil } from '../stil'
-import { dokumentDrucken, angebotDruckHtml, type DruckFirma, type DruckPosition } from '../../lib/druckExport'
+import { druckfensterOeffnen, dokumentInFensterSchreiben, angebotDruckHtml, type DruckFirma, type DruckPosition } from '../../lib/druckExport'
 
 type Firma = { id: string; name: string }
 type Gewerk = { id: string; name: string }
@@ -202,9 +202,16 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
       .then(({ data }) => { if (data) setProjektFuerDruck(data) })
   }, [projektId])
 
+  // Bugfix (12.09.2026, Julian-Meldung "PDF-Export funktioniert nicht"):
+  // das Druckfenster muss synchron im Klick-Handler geöffnet werden, sonst
+  // blocken Browser (v.a. Safari) das window.open() nach den await-Sprüngen
+  // unten stillschweigend, weil es dann nicht mehr als direkte Reaktion auf
+  // den Klick erkannt wird - deshalb erst öffnen, dann nachladen.
   async function angebotDrucken(a: Angebot) {
     if (!a.firmen || !projektFuerDruck) return
-    const [{ data: firmaData }, { data: posData }] = await Promise.all([
+    const fenster = druckfensterOeffnen()
+    if (!fenster) return
+    const [{ data: firmaData, error: firmaFehler }, { data: posData }] = await Promise.all([
       supabase.from('firmen').select('name, rechtsform, adresse, ust_id, telefon, email, iban').eq('id', a.firmen.id).maybeSingle(),
       supabase
         .from('angebot_positionen')
@@ -212,7 +219,15 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
         .eq('angebot_id', a.id)
         .order('erstellt_am', { ascending: true }),
     ])
-    if (!firmaData) return
+    if (!firmaData) {
+      fenster.close()
+      alert(
+        firmaFehler
+          ? `Firmendaten konnten nicht geladen werden (${firmaFehler.message}). Wurde die Migration 0051 (Telefon/E-Mail/IBAN für Firmen) bereits mit "supabase db push" eingespielt?`
+          : 'Firmendaten konnten nicht geladen werden.'
+      )
+      return
+    }
     const html = angebotDruckHtml({
       angebotsnummer: `A-${new Date(a.erstellt_am).getFullYear()}-${a.id.slice(0, 6).toUpperCase()}`,
       gewerk: a.gewerk,
@@ -225,7 +240,7 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
       positionen: (posData ?? []) as DruckPosition[],
       summeNettoCents: a.summe_netto_cents,
     })
-    dokumentDrucken(`Angebot ${a.firmen.name} – ${projektFuerDruck.name}`, html)
+    dokumentInFensterSchreiben(fenster, `Angebot ${a.firmen.name} – ${projektFuerDruck.name}`, html)
   }
 
   const gewerkeMitOffenenLv = useMemo(() => {
