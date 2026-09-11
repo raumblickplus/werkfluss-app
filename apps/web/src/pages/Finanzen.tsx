@@ -295,7 +295,7 @@ export default function Finanzen() {
         ) : (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 14 }}>
-              <div className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
+              <a href="#offene-rechnungen" className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260, textDecoration: 'none' }}>
                 <div className="block-ticks" />
                 <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <EuroIcon groesse={14} />
@@ -303,38 +303,38 @@ export default function Finanzen() {
                 </div>
                 <div className="block-num" style={{ fontSize: 'clamp(34px, 3.6vw, 56px)' }}>{euro.format(offeneForderungenCents / 100)}</div>
                 <div className="block-sub">{heroText.titel}</div>
-              </div>
-              <div className={`block ${ueberfaelligeSummeCents > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
+              </a>
+              <a href="#offene-rechnungen" className={`block ${ueberfaelligeSummeCents > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220, textDecoration: 'none' }}>
                 <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {ueberfaelligeSummeCents > 0 && <WarnBlockIcon />}
                   {ueberfaelligeSummeCents > 0 ? 'Überfällig' : 'Alles im Zeitplan'}
                 </div>
                 <div className="block-num" style={{ fontSize: 'clamp(30px, 3.2vw, 48px)' }}>{euro.format(ueberfaelligeSummeCents / 100)}</div>
                 <div className="block-sub">{heroText.subtitel}</div>
-              </div>
+              </a>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
-              <div className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              <a href="#finanzen-je-projekt" className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Aktive Aufträge (netto)</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{euro.format(aktiveAuftragsSummeCents / 100)}</div>
-              </div>
-              <div className="block olive" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              </a>
+              <a href="#angebote-in-pruefung" className="block olive" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Angebote in Prüfung</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{euro.format(angeboteVersendetSummeCents / 100)}</div>
-              </div>
-              <div className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              </a>
+              <a href="#offene-rechnungen" className="block cream" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Rechnungen offen</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(offeneRechnungen.length)}</div>
-              </div>
-              <div className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              </a>
+              <a href="#finanzen-je-projekt" className="block dark" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Projekte mit Finanzdaten</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(projekteMitFinanzen.length)}</div>
-              </div>
+              </a>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 20, marginBottom: 24 }}>
-              <div style={karteStil}>
+              <div id="offene-rechnungen" style={{ ...karteStil, scrollMarginTop: 20 }}>
                 <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>Offene &amp; überfällige Rechnungen</h2>
                 {offeneRechnungenSortiert.length === 0 ? (
                   <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Keine offenen Rechnungen – alles bezahlt.</p>
@@ -432,7 +432,7 @@ export default function Finanzen() {
                 )}
               </div>
 
-              <div style={karteStil}>
+              <div id="angebote-in-pruefung" style={{ ...karteStil, scrollMarginTop: 20 }}>
                 <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>Angebote in Prüfung</h2>
                 {angeboteVersendetSortiert.length === 0 ? (
                   <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Keine versendeten Angebote, die auf Antwort warten.</p>
@@ -460,7 +460,7 @@ export default function Finanzen() {
               </div>
             </div>
 
-            <div style={{ ...karteStil, overflowX: 'auto' }}>
+            <div id="finanzen-je-projekt" style={{ ...karteStil, overflowX: 'auto', scrollMarginTop: 20 }}>
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>Finanzen je Projekt</h2>
               {projekteMitFinanzen.length === 0 ? (
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Noch keine Angebote, Aufträge oder Rechnungen angelegt.</p>

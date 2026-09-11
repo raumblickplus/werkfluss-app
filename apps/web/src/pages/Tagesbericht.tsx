@@ -300,7 +300,7 @@ export default function Tagesbericht() {
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 14 }}>
-              <div className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
+              <a href="#berichte-des-tages" className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260, textDecoration: 'none' }}>
                 <div className="block-ticks" />
                 <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <BuchIcon groesse={14} />
@@ -308,35 +308,35 @@ export default function Tagesbericht() {
                 </div>
                 <div className="block-num" style={{ fontSize: 'clamp(34px, 3.6vw, 56px)' }}>{eintraege.length}</div>
                 <div className="block-sub">{heroText.titel}</div>
-              </div>
-              <div className={`block ${projekteOhneBericht.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
+              </a>
+              <a href="#projekte-ohne-bericht" className={`block ${projekteOhneBericht.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220, textDecoration: 'none' }}>
                 <div className="block-lbl">Ohne Bericht</div>
                 <div className="block-num" style={{ fontSize: 'clamp(30px, 3.2vw, 48px)' }}>{projekteOhneBericht.length}</div>
                 <div className="block-sub">{heroText.subtitel}</div>
-              </div>
+              </a>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
-              <div className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              <a href="#berichte-des-tages" className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Berichte</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(eintraege.length)}</div>
-              </div>
-              <div className="block olive" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              </a>
+              <a href="#projekte-ohne-bericht" className="block olive" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Ohne Bericht</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(projekteOhneBericht.length)}</div>
-              </div>
-              <div className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              </a>
+              <a href="#neue-maengel" className="block cream" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Neue Mängel</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(maengel.length)}</div>
-              </div>
-              <div className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              </a>
+              <a href="#neue-maengel" className="block dark" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Davon kritisch</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(kritischeMaengel.length)}</div>
-              </div>
+              </a>
             </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 20, marginBottom: 24 }}>
-            <div style={karteStil}>
+            <div id="berichte-des-tages" style={{ ...karteStil, scrollMarginTop: 20 }}>
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>Berichte des Tages</h2>
               {eintraege.length === 0 ? (
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Kein Bautagebuch-Eintrag {istHeute ? 'heute' : 'an diesem Tag'}.</p>
@@ -376,7 +376,7 @@ export default function Tagesbericht() {
               )}
             </div>
 
-            <div style={karteStil}>
+            <div id="projekte-ohne-bericht" style={{ ...karteStil, scrollMarginTop: 20 }}>
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>Projekte ohne Bericht</h2>
               {aktiveProjekte.length === 0 ? (
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Aktuell kein Projekt in Ausführung.</p>
@@ -399,7 +399,7 @@ export default function Tagesbericht() {
             </div>
           </div>
 
-          <div style={karteStil}>
+          <div id="neue-maengel" style={{ ...karteStil, scrollMarginTop: 20 }}>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>
               Neue Mängel {istHeute ? 'heute' : 'an diesem Tag'}
             </h2>

@@ -141,7 +141,7 @@ export default function Maengel() {
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 14 }}>
-              <div className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260 }}>
+              <a href="#dringende-maengel" className="block olive-deep" style={{ gridColumn: 'span 7', minWidth: 260, textDecoration: 'none' }}>
                 <div className="block-ticks" />
                 <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <WarnIcon groesse={14} />
@@ -149,38 +149,38 @@ export default function Maengel() {
                 </div>
                 <div className="block-num" style={{ fontSize: 'clamp(34px, 3.6vw, 56px)' }}>{offeneMaengel.length}</div>
                 <div className="block-sub">{heroText.titel}</div>
-              </div>
-              <div className={`block ${kritischeMaengel.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220 }}>
+              </a>
+              <a href="#dringende-maengel" className={`block ${kritischeMaengel.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 5', minWidth: 220, textDecoration: 'none' }}>
                 <div className="block-lbl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {kritischeMaengel.length > 0 && <WarnIcon groesse={14} />}
                   {kritischeMaengel.length > 0 ? 'Kritische Mängel' : 'Kritisch'}
                 </div>
                 <div className="block-num" style={{ fontSize: 'clamp(30px, 3.2vw, 48px)' }}>{kritischeMaengel.length}</div>
                 <div className="block-sub">{heroText.subtitel}</div>
-              </div>
+              </a>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
-              <div className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              <a href="#dringende-maengel" className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Über der Frist</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(ueberfaelligeMaengel.length)}</div>
-              </div>
-              <div className="block olive" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              </a>
+              <a href="#maengel-je-projekt" className="block olive" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Abnahme-Quote</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{abnahmeQuote === null ? '–' : `${abnahmeQuote}%`}</div>
-              </div>
-              <div className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              </a>
+              <a href="#maengel-je-projekt" className="block cream" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Projekte mit Mängeln</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(projekteMitMaengeln.length)}</div>
-              </div>
-              <div className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+              </a>
+              <a href="#maengel-je-projekt" className="block dark" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
                 <div className="block-lbl">Mängel gesamt</div>
                 <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{String(maengel.length)}</div>
-              </div>
+              </a>
             </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 20, marginBottom: 24 }}>
-            <div style={karteStil}>
+            <div id="dringende-maengel" style={{ ...karteStil, scrollMarginTop: 20 }}>
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>Dringende Mängel</h2>
               {dringendeMaengel.length === 0 ? (
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Keine offenen Mängel – gute Lage.</p>
@@ -243,7 +243,7 @@ export default function Maengel() {
             </div>
           </div>
 
-          <div style={{ ...karteStil, overflowX: 'auto' }}>
+          <div id="maengel-je-projekt" style={{ ...karteStil, overflowX: 'auto', scrollMarginTop: 20 }}>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>Mängel je Projekt</h2>
             {projekteMitMaengeln.length === 0 ? (
               <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Noch keine Mängel gemeldet.</p>
@@ -271,12 +271,12 @@ export default function Maengel() {
                           <Link to={`/projekte/${p.id}?tab=maengel`} style={{ textDecoration: 'none', color: 'var(--ink)', fontWeight: 600 }}>{p.name}</Link>{' '}
                           <span style={pillStil(projektStatusVariante[p.status] ?? 'neutral')}>{projektStatusLabel[p.status] ?? p.status}</span>
                         </td>
-                        <td style={{ padding: '10px' }}>{pOffen.length}</td>
-                        <td style={{ padding: '10px', color: pKritisch.length > 0 ? 'var(--red)' : 'var(--ink-faint)', fontWeight: pKritisch.length > 0 ? 700 : 400 }}>
-                          {pKritisch.length}
+                        <td style={{ padding: 0 }}><Link to={`/projekte/${p.id}?tab=maengel`} style={{ display: 'block', padding: '10px', color: 'inherit', textDecoration: 'none' }}>{pOffen.length}</Link></td>
+                        <td style={{ padding: 0, color: pKritisch.length > 0 ? 'var(--red)' : 'var(--ink-faint)', fontWeight: pKritisch.length > 0 ? 700 : 400 }}>
+                          <Link to={`/projekte/${p.id}?tab=maengel`} style={{ display: 'block', padding: '10px', color: 'inherit', textDecoration: 'none' }}>{pKritisch.length}</Link>
                         </td>
-                        <td style={{ padding: '10px' }}>{pBehoben.length}</td>
-                        <td style={{ padding: '10px 0 10px 10px', color: 'var(--olive)' }}>{pAbgenommen.length}</td>
+                        <td style={{ padding: 0 }}><Link to={`/projekte/${p.id}?tab=maengel`} style={{ display: 'block', padding: '10px', color: 'inherit', textDecoration: 'none' }}>{pBehoben.length}</Link></td>
+                        <td style={{ padding: 0, color: 'var(--olive)' }}><Link to={`/projekte/${p.id}?tab=maengel`} style={{ display: 'block', padding: '10px 0 10px 10px', color: 'inherit', textDecoration: 'none' }}>{pAbgenommen.length}</Link></td>
                       </tr>
                     )
                   })}

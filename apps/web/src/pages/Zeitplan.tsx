@@ -173,25 +173,25 @@ export default function Zeitplan() {
             </label>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
-            <div className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+            <a href="#zeitstrahl" className="block dark" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
               <div className="block-lbl">Gewerke im Zeitstrahl</div>
               <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{gewerkeAnzahl}</div>
-            </div>
-            <div className={`block ${ueberfaellig.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 3', minWidth: 160 }}>
+            </a>
+            <a href="#anstehende-termine" className={`block ${ueberfaellig.length > 0 ? 'terracotta' : 'sage'}`} style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
               <div className="block-lbl">Überfällige Termine</div>
               <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{ueberfaellig.length}</div>
-            </div>
-            <div className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+            </a>
+            <a href="#anstehende-termine" className="block mustard" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
               <div className="block-lbl">Nächste 3 Wochen</div>
               <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{naeher.length}</div>
-            </div>
-            <div className="block cream" style={{ gridColumn: 'span 3', minWidth: 160 }}>
+            </a>
+            <a href="#projekte-ohne-termine" className="block cream" style={{ gridColumn: 'span 3', minWidth: 160, textDecoration: 'none' }}>
               <div className="block-lbl">Projekte ohne Termine</div>
               <div className="block-num" style={{ fontSize: 'clamp(20px, 1.8vw, 28px)' }}>{projekteOhneTermine.length}</div>
-            </div>
+            </a>
           </div>
 
-          <div style={{ ...karteStil, marginBottom: 24, overflowX: 'auto' }}>
+          <div id="zeitstrahl" style={{ ...karteStil, marginBottom: 24, overflowX: 'auto', scrollMarginTop: 20 }}>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 4px' }}>Zeitstrahl nach Gewerk</h2>
             <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--ink-faint)' }}>
               Jeder Punkt ist ein echter Termin – eine Aufgabe mit Fälligkeitsdatum –, gruppiert je Projekt und Gewerk.
@@ -294,7 +294,7 @@ export default function Zeitplan() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 20 }}>
-            <div style={karteStil}>
+            <div id="anstehende-termine" style={{ ...karteStil, scrollMarginTop: 20 }}>
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>Anstehende Termine</h2>
               {aufgaben.length === 0 ? (
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Keine offenen Aufgaben mit Fälligkeitsdatum.</p>
@@ -331,7 +331,7 @@ export default function Zeitplan() {
               )}
             </div>
 
-            <div style={karteStil}>
+            <div id="projekte-ohne-termine" style={{ ...karteStil, scrollMarginTop: 20 }}>
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: '0 0 14px' }}>Projekte ohne Termine</h2>
               {projekteOhneTermine.length === 0 ? (
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-faint)' }}>Jedes laufende Projekt hat mindestens eine offene Aufgabe mit Fälligkeitsdatum.</p>
