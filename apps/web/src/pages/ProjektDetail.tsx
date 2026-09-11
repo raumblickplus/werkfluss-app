@@ -17,6 +17,7 @@ import Faelle from './projekt/Faelle'
 import Genehmigungen from './projekt/Genehmigungen'
 import TechnikHub from './projekt/TechnikHub'
 import Stundenzettel from './projekt/Stundenzettel'
+import SpesenUnterbringung from './projekt/SpesenUnterbringung'
 import Dokumente from './projekt/Dokumente'
 import Leistungsphasen from './projekt/Leistungsphasen'
 import Bedenkenanmeldungen from './projekt/Bedenkenanmeldungen'
@@ -24,7 +25,7 @@ import { tabIcons, gruppenIcons } from './projekt/tabIcons'
 import { projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
 type Projekt = ProjektDetails & { firma_id: string; breitengrad: number | null; laengengrad: number | null }
-type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'faelle' | 'rechnungen' | 'foerdermittel' | 'genehmigungen' | 'technik' | 'stundenzettel' | 'dokumente' | 'leistungsphasen' | 'bedenken'
+type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'faelle' | 'rechnungen' | 'foerdermittel' | 'genehmigungen' | 'technik' | 'stundenzettel' | 'spesen' | 'dokumente' | 'leistungsphasen' | 'bedenken'
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'uebersicht', label: 'Übersicht' },
@@ -41,6 +42,7 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'genehmigungen', label: 'Genehmigungen' },
   { key: 'technik', label: 'Technik/Material' },
   { key: 'stundenzettel', label: 'Stundenzettel' },
+  { key: 'spesen', label: 'Spesen & Unterbringung' },
   { key: 'dokumente', label: 'Pläne & Dokumente' },
   { key: 'leistungsphasen', label: 'Leistungsphasen' },
   { key: 'bedenken', label: 'Bedenkenanmeldung' },
@@ -59,7 +61,7 @@ const tabs: { key: Tab; label: string }[] = [
 type TabGruppe = { label: string; tabs: Tab[] }
 const tabGruppen: TabGruppe[] = [
   { label: 'Planung', tabs: ['ausschreibung', 'leistungsphasen', 'genehmigungen', 'foerdermittel'] },
-  { label: 'Ausführung', tabs: ['bautagebuch', 'aufgaben', 'maengel', 'bedenken', 'technik', 'stundenzettel', 'dokumente'] },
+  { label: 'Ausführung', tabs: ['bautagebuch', 'aufgaben', 'maengel', 'bedenken', 'technik', 'stundenzettel', 'spesen', 'dokumente'] },
   { label: 'Abrechnung', tabs: ['angebote', 'rechnungen'] },
   { label: 'Abschluss', tabs: ['abnahme', 'faelle'] },
 ]
@@ -241,6 +243,7 @@ export default function ProjektDetail() {
       {aktivTab === 'genehmigungen' && <Genehmigungen projektId={id} istEigentuemer={istEigentuemer} />}
       {aktivTab === 'technik' && <TechnikHub projektId={id} />}
       {aktivTab === 'stundenzettel' && <Stundenzettel projektId={id} />}
+      {aktivTab === 'spesen' && <SpesenUnterbringung projektId={id} />}
       {aktivTab === 'dokumente' && <Dokumente projektId={id} />}
       {aktivTab === 'leistungsphasen' && <Leistungsphasen projektId={id} istEigentuemer={istEigentuemer} />}
       {aktivTab === 'bedenken' && <Bedenkenanmeldungen projektId={id} istEigentuemer={istEigentuemer} />}

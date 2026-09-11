@@ -119,6 +119,13 @@ export const tabIcons: Record<string, ReactNode> = {
       <path d="M5 7.5v13a1 1 0 0 0 1 1h10" />
     </Svg>
   ),
+  spesen: (
+    <Svg>
+      <path d="M4 8.5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z" />
+      <path d="M8 8.5V6a2.5 2.5 0 0 1 2.5-2.5h3A2.5 2.5 0 0 1 16 6v2.5" />
+      <path d="M3 13h18" />
+    </Svg>
+  ),
   leistungsphasen: (
     <Svg>
       <path d="M4 20V15M9.5 20V11M15 20V7M20 20V3.5" />
