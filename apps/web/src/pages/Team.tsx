@@ -13,6 +13,8 @@ type Mitglied = {
   profile: { vollname: string; email: string } | null
 }
 
+type Aufgabe = { id: string; zugewiesen_an: string | null; status: string; faellig_am: string | null }
+
 type Einladung = {
   id: string
   rolle: string
@@ -40,6 +42,7 @@ export default function Team() {
   const { aktivFirma } = useAuth()
   const [mitglieder, setMitglieder] = useState<Mitglied[]>([])
   const [einladungen, setEinladungen] = useState<Einladung[]>([])
+  const [aufgaben, setAufgaben] = useState<Aufgabe[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
   const [formOffen, setFormOffen] = useState(false)
   const [neueRolle, setNeueRolle] = useState('mitarbeiter')
@@ -57,7 +60,7 @@ export default function Team() {
   async function laden() {
     if (!aktivFirma) return
     setLadeStatus('laedt')
-    const [{ data: mData, error: mFehler }, eErgebnis] = await Promise.all([
+    const [{ data: mData, error: mFehler }, eErgebnis, { data: aData }] = await Promise.all([
       supabase
         .from('firma_mitglieder')
         .select('id, nutzer_id, rolle, abteilung, freigabe_limit_cents, profile(vollname, email)')
@@ -71,6 +74,11 @@ export default function Team() {
             .eq('status', 'offen')
             .order('erstellt_am', { ascending: false })
         : Promise.resolve({ data: [], error: null }),
+      // Für die Auslastungs-Übersicht unten - offene/überfällige Aufgaben je
+      // Mitglied, projektübergreifend über alle Projekte dieser Firma (RLS
+      // beschränkt ohnehin auf is_member_of_projekt). Keine neue Tabelle,
+      // reine Aggregation der längst vorhandenen Zuweisung (aufgaben.zugewiesen_an).
+      supabase.from('aufgaben').select('id, zugewiesen_an, status, faellig_am').not('zugewiesen_an', 'is', null),
     ])
 
     if (!mFehler && mData) {
@@ -82,6 +90,7 @@ export default function Team() {
       )
     }
     if (!eErgebnis.error && eErgebnis.data) setEinladungen(eErgebnis.data as Einladung[])
+    setAufgaben((aData ?? []) as Aufgabe[])
     setLadeStatus('bereit')
   }
 
@@ -154,6 +163,15 @@ export default function Team() {
   if (!aktivFirma) return null
 
   const ohneFreigabe = mitglieder.filter((m) => m.rolle !== 'inhaber' && m.rolle !== 'geschaeftsfuehrung' && m.freigabe_limit_cents == null).length
+
+  const heuteIso = new Date().toISOString().slice(0, 10)
+  const auslastung = mitglieder
+    .map((m) => {
+      const eigene = aufgaben.filter((a) => a.zugewiesen_an === m.nutzer_id && a.status !== 'erledigt')
+      const ueberfaellig = eigene.filter((a) => a.faellig_am != null && a.faellig_am < heuteIso)
+      return { mitglied: m, offen: eigene.length, ueberfaellig: ueberfaellig.length }
+    })
+    .sort((a, b) => b.ueberfaellig - a.ueberfaellig || b.offen - a.offen)
 
   return (
     <AppShell
@@ -329,6 +347,27 @@ export default function Team() {
         })}
       </div>
 
+      {auslastung.some((a) => a.offen > 0) && (
+        <>
+          <h3 style={{ fontSize: 13, color: 'var(--ink-faint)', margin: '0 0 8px', fontWeight: 700 }}>
+            Auslastung
+          </h3>
+          <div style={{ ...karteStil, padding: '6px 8px', marginBottom: 24 }}>
+            {auslastung.filter((a) => a.offen > 0).map(({ mitglied: m, offen, ueberfaellig }) => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 10px', borderBottom: '1px solid rgba(40,28,14,.08)' }}>
+                <div style={{ flex: 1, minWidth: 160, fontSize: 13, fontWeight: 700 }}>{m.profile?.vollname || m.profile?.email || 'Unbekannt'}</div>
+                <div style={{ height: 6, borderRadius: 999, background: 'rgba(40,28,14,.08)', overflow: 'hidden', flex: 2, minWidth: 100 }}>
+                  <div style={{ height: '100%', width: `${Math.min(100, offen * 12)}%`, borderRadius: 999, background: ueberfaellig > 0 ? 'var(--red)' : 'var(--orange-deep)' }} />
+                </div>
+                <span style={pillStil(ueberfaellig > 0 ? 'bad' : 'neutral')}>
+                  {offen} offen{ueberfaellig > 0 ? ` · ${ueberfaellig} überfällig` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       {istAdmin && einladungen.length > 0 && (
         <>
           <h3 style={{ fontSize: 13, color: 'var(--ink-faint)', margin: '0 0 8px', fontWeight: 700 }}>
@@ -368,7 +407,9 @@ export default function Team() {
         erteilen darf (z.B. „Zahlungen bis 5.000 €") – ohne hinterlegtes Limit kann das Mitglied
         keinen Auftrag erteilen, nur ansehen. Inhaber und Geschäftsführung sind immer unbegrenzt
         freigabeberechtigt. Der Versand von Einladungslinks läuft aktuell manuell – ein eigener
-        E-Mail-Versand ist für eine spätere Phase vorgesehen.
+        E-Mail-Versand ist für eine spätere Phase vorgesehen. Die Auslastung zählt offene/überfällige,
+        einer Person zugewiesene Aufgaben projektübergreifend – ohne Kapazitätsplanung oder Stundenbezug,
+        nur ein schneller Blick, wer gerade am meisten offene Aufgaben hat.
       </p>
     </AppShell>
   )
