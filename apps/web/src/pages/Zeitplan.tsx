@@ -18,6 +18,7 @@ type Aufgabe = {
   faellig_am: string | null
   gewerk: string | null
   projekt_id: string
+  zugewiesen_an: string | null
 }
 
 type GewerkZeile = {
@@ -56,10 +57,11 @@ function datumLabel(iso: string, heute: Date) {
 const LABEL_SPALTE = 230
 
 export default function Zeitplan() {
-  const { aktivFirma } = useAuth()
+  const { aktivFirma, session } = useAuth()
   const [projekte, setProjekte] = useState<ProjektZeile[]>([])
   const [aufgaben, setAufgaben] = useState<Aufgabe[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
+  const [nurMeine, setNurMeine] = useState(false)
 
   async function laden() {
     setLadeStatus('laedt')
@@ -67,7 +69,7 @@ export default function Zeitplan() {
       supabase.from('projekte').select('id, name, status').neq('status', 'abgeschlossen'),
       supabase
         .from('aufgaben')
-        .select('id, titel, status, faellig_am, gewerk, projekt_id')
+        .select('id, titel, status, faellig_am, gewerk, projekt_id, zugewiesen_an')
         .neq('status', 'erledigt')
         .not('faellig_am', 'is', null)
         .order('faellig_am', { ascending: true }),
@@ -85,13 +87,17 @@ export default function Zeitplan() {
   }
 
   const heute = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
+  const sichtbareAufgaben = useMemo(
+    () => (nurMeine ? aufgaben.filter((a) => a.zugewiesen_an === session?.user?.id) : aufgaben),
+    [aufgaben, nurMeine, session?.user?.id]
+  )
   const heuteIso = alsIsoDatum(heute)
   const projektName = (id: string) => projekte.find((p) => p.id === id)?.name ?? 'Unbekanntes Projekt'
 
   // Je Projekt + Gewerk eine Zeitstrahl-Zeile, mit allen echten Terminen (Aufgaben mit Fälligkeitsdatum) darin.
   const gewerkeZeilen = useMemo(() => {
     const zeilen: GewerkZeile[] = []
-    for (const a of aufgaben) {
+    for (const a of sichtbareAufgaben) {
       const gewerk = a.gewerk?.trim() || 'Ohne Gewerk'
       let zeile = zeilen.find((z) => z.projektId === a.projekt_id && z.gewerk === gewerk)
       if (!zeile) {
@@ -104,7 +110,7 @@ export default function Zeitplan() {
     zeilen.sort((x, y) => x.projektName.localeCompare(y.projektName) || x.gewerk.localeCompare(y.gewerk))
     return zeilen
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aufgaben, projekte])
+  }, [sichtbareAufgaben, projekte])
 
   const projekteOhneTermine = projekte.filter((p) => !gewerkeZeilen.some((z) => z.projektId === p.id))
   const gewerkeAnzahl = new Set(gewerkeZeilen.map((z) => z.gewerk)).size
@@ -112,7 +118,7 @@ export default function Zeitplan() {
   const { rangeStart, totalTage, monatsBuckets } = useMemo(() => {
     let start = addTage(heute, -14)
     let end = addTage(heute, 90)
-    for (const a of aufgaben) {
+    for (const a of sichtbareAufgaben) {
       const d = new Date(a.faellig_am!)
       if (d < start) start = d
       if (d > end) end = d
@@ -136,14 +142,14 @@ export default function Zeitplan() {
     }
     return { rangeStart: start, totalTage: gesamt, monatsBuckets: buckets }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aufgaben, heute])
+  }, [sichtbareAufgaben, heute])
 
   const heuteOffsetPct = Math.min(100, Math.max(0, (tageZwischen(rangeStart, heute) / totalTage) * 100))
 
-  const ueberfaellig = aufgaben.filter((a) => a.faellig_am! < heuteIso)
+  const ueberfaellig = sichtbareAufgaben.filter((a) => a.faellig_am! < heuteIso)
   const dreiWochenGrenze = alsIsoDatum(addTage(heute, 21))
-  const naeher = aufgaben.filter((a) => a.faellig_am! >= heuteIso && a.faellig_am! <= dreiWochenGrenze)
-  const weitereAnzahl = aufgaben.length - ueberfaellig.length - naeher.length
+  const naeher = sichtbareAufgaben.filter((a) => a.faellig_am! >= heuteIso && a.faellig_am! <= dreiWochenGrenze)
+  const weitereAnzahl = sichtbareAufgaben.length - ueberfaellig.length - naeher.length
 
   const naeherGruppiert: { datum: string; eintraege: Aufgabe[] }[] = []
   for (const a of naeher) {
@@ -160,6 +166,12 @@ export default function Zeitplan() {
         <p style={{ color: 'var(--ink-faint)' }}>Lädt …</p>
       ) : (
         <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ink-dim)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={nurMeine} onChange={(e) => setNurMeine(e.target.checked)} />
+              Nur meine Aufgaben
+            </label>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 14, marginBottom: 24 }}>
             <div className="block dark" style={{ gridColumn: 'span 3', minWidth: 160 }}>
               <div className="block-lbl">Gewerke im Zeitstrahl</div>

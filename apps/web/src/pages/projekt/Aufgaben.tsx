@@ -9,6 +9,8 @@ type Aufgabe = {
   status: 'offen' | 'in_bearbeitung' | 'erledigt'
   faellig_am: string | null
   gewerk: string | null
+  zugewiesen_an: string | null
+  profile: ProfilMini
 }
 
 type Gewerk = { id: string; name: string }
@@ -53,7 +55,7 @@ function tageDifferenz(vonIso: string, bisIso: string) {
 // 8.8/6, "Störungen & Abweichungen") - bisher listete diese Seite Termine
 // nur flach ohne jede Beziehung zueinander.
 export default function Aufgaben({ projektId, istEigentuemer }: { projektId: string; istEigentuemer: boolean }) {
-  const { session } = useAuth()
+  const { session, aktivFirma } = useAuth()
   const [aufgaben, setAufgaben] = useState<Aufgabe[]>([])
   const [abhaengigkeiten, setAbhaengigkeiten] = useState<Abhaengigkeit[]>([])
   const [verschiebungen, setVerschiebungen] = useState<Verschiebung[]>([])
@@ -72,16 +74,17 @@ export default function Aufgaben({ projektId, istEigentuemer }: { projektId: str
   const [neueVorgaengerId, setNeueVorgaengerId] = useState('')
   const [verschiebungsGrund, setVerschiebungsGrund] = useState<Record<string, string>>({})
   const [vorschlag, setVorschlag] = useState<{ ursprung: Aufgabe; deltaTage: number; betroffene: Aufgabe[] } | null>(null)
+  const [zuweisbarePersonen, setZuweisbarePersonen] = useState<{ id: string; name: string }[]>([])
 
   async function laden() {
     setLadeStatus('laedt')
     const [{ data: aData, error }, { data: abData }, { data: vData }] = await Promise.all([
-      supabase.from('aufgaben').select('id, titel, status, faellig_am, gewerk').eq('projekt_id', projektId).order('faellig_am', { ascending: true, nullsFirst: false }),
+      supabase.from('aufgaben').select('id, titel, status, faellig_am, gewerk, zugewiesen_an, profile(vollname)').eq('projekt_id', projektId).order('faellig_am', { ascending: true, nullsFirst: false }),
       supabase.from('aufgaben_abhaengigkeiten').select('id, vorgaenger_id, nachfolger_id').eq('projekt_id', projektId),
       supabase.from('terminverschiebungen').select('id, aufgabe_id, grund, alter_termin, neuer_termin, erstellt_am, profile(vollname)').eq('projekt_id', projektId).order('erstellt_am', { ascending: false }),
     ])
     if (error) { setLadeStatus('fehler'); return }
-    setAufgaben(aData ?? [])
+    setAufgaben((aData ?? []) as unknown as Aufgabe[])
     setAbhaengigkeiten((abData ?? []) as Abhaengigkeit[])
     setVerschiebungen((vData ?? []) as unknown as Verschiebung[])
     setLadeStatus('bereit')
@@ -92,6 +95,21 @@ export default function Aufgaben({ projektId, istEigentuemer }: { projektId: str
   useEffect(() => {
     supabase.from('gewerke').select('id, name').order('sortierung').then(({ data }) => setGewerke(data ?? []))
   }, [])
+
+  useEffect(() => {
+    if (!aktivFirma) { setZuweisbarePersonen([]); return }
+    supabase
+      .from('firma_mitglieder')
+      .select('nutzer_id, profile(vollname)')
+      .eq('firma_id', aktivFirma.id)
+      .then(({ data }) => {
+        const personen = ((data ?? []) as unknown as { nutzer_id: string | null; profile: ProfilMini }[])
+          .filter((r): r is { nutzer_id: string; profile: ProfilMini } => !!r.nutzer_id)
+          .map((r) => ({ id: r.nutzer_id, name: vollname(r.profile) ?? 'Unbenannt' }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+        setZuweisbarePersonen(personen)
+      })
+  }, [aktivFirma?.id])
 
   useEffect(() => {
     if (!gewerkId) { setStandardaufgaben([]); setAusgewaehlteIds(new Set()); return }
@@ -147,6 +165,11 @@ export default function Aufgaben({ projektId, istEigentuemer }: { projektId: str
   async function toggleErledigt(a: Aufgabe) {
     const neuerStatus = a.status === 'erledigt' ? 'offen' : 'erledigt'
     await supabase.from('aufgaben').update({ status: neuerStatus }).eq('id', a.id)
+    laden()
+  }
+
+  async function zuweisen(a: Aufgabe, personId: string) {
+    await supabase.from('aufgaben').update({ zugewiesen_an: personId || null }).eq('id', a.id)
     laden()
   }
 
@@ -313,6 +336,7 @@ export default function Aufgaben({ projektId, istEigentuemer }: { projektId: str
                   </span>
                 </label>
                 {a.gewerk && <span style={pillStil('neutral')}>{a.gewerk}</span>}
+                {vollname(a.profile) && <span style={pillStil('neutral')} title="Zugewiesen an">👤 {vollname(a.profile)}</span>}
                 {vorgaenger.length > 0 && <span style={pillStil('warn')} title="Hängt von anderen Aufgaben ab">⛓ {vorgaenger.length}</span>}
                 {a.faellig_am && (
                   <span style={{ fontSize: 12, color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>
@@ -333,6 +357,13 @@ export default function Aufgaben({ projektId, istEigentuemer }: { projektId: str
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--ink-dim)' }}>
                       Fälligkeitsdatum
                       <input type="date" style={eingabeStil} value={a.faellig_am ?? ''} onChange={(e) => terminAendern(a, e.target.value)} />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--ink-dim)' }}>
+                      Zugewiesen an
+                      <select style={eingabeStil} value={a.zugewiesen_an ?? ''} onChange={(e) => zuweisen(a, e.target.value)}>
+                        <option value="">– niemand –</option>
+                        {zuweisbarePersonen.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
                     </label>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--ink-dim)' }}>
                       Grund bei Verschiebung
@@ -412,7 +443,10 @@ export default function Aufgaben({ projektId, istEigentuemer }: { projektId: str
         automatisches Neuberechnen des gesamten Zeitplans – beim Verschieben eines Termins wird nur
         vorgeschlagen, direkt abhängige Folgeaufgaben ebenfalls zu verschieben, übernommen wird nichts
         automatisch. Jede Terminänderung einer bereits terminierten Aufgabe wird mit Grund im Verlauf
-        protokolliert.
+        protokolliert. Eine Aufgabe lässt sich zusätzlich einer Person aus der eigenen aktiven Firma
+        zuweisen (Auswahlliste „Zugewiesen an") – die eigene, projektübergreifende Aufgabenliste findet
+        sich im Zeitplan unter „Nur meine Aufgaben". Die Zuweisung ändert nichts daran, wer eine Aufgabe
+        sehen oder bearbeiten darf.
       </p>
     </div>
   )

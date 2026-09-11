@@ -1,0 +1,24 @@
+-- Persönliche Aufgabenzuweisung nutzbar machen (Konzept Abschnitt 8.1/8.8/
+-- 8.14: "Wer macht was, bis wann", Ressourcenübersicht je Person,
+-- unterschiedliche Sichten je Mitarbeiter). Die Spalte aufgaben.zugewiesen_an
+-- existiert bereits seit der allerersten Migration (0001_init.sql), wurde
+-- aber im gesamten Frontend nie gelesen oder geschrieben - eine Aufgabe
+-- ließ sich zwar einem Gewerk, aber nie einer konkreten Person zuordnen,
+-- und niemand konnte sehen "was ist eigentlich meine eigene Aufgabenliste
+-- über alle Projekte hinweg".
+--
+-- Kein Schema-Zusatz nötig, die Spalte reicht - nur ein Index für die neue
+-- "Nur meine Aufgaben"-Filterung in Zeitplan.tsx (WHERE zugewiesen_an = ...
+-- über potenziell viele Projekte hinweg).
+--
+-- Bewusst KEINE RLS-Änderung: die Zuweisung ändert nicht, wer eine Aufgabe
+-- sehen/bearbeiten darf (das bleibt Gewerk-/Eigentümer-basiert wie bisher,
+-- 0019_projekt_rechte.sql) - Zuweisung ist zusätzliche Information, keine
+-- neue Berechtigung. Die Auswahlliste im Frontend zeigt bewusst nur
+-- Mitglieder der eigenen aktiven Firma (firma_mitglieder.select-Policy
+-- erlaubt ohnehin nur die Sicht auf die eigene Firma, is_member_of_firma) -
+-- eine firmenübergreifende Zuweisung würde eine neue, firmenfremde
+-- Sichtbarkeit von Team-Mitgliedern erfordern, die hier bewusst nicht
+-- eingeführt wird.
+
+create index if not exists idx_aufgaben_zugewiesen_an on aufgaben (zugewiesen_an) where zugewiesen_an is not null;
