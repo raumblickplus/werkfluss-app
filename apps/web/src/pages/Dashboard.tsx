@@ -10,6 +10,7 @@ type Aufgabe = { id: string; titel: string; gewerk: string | null; faellig_am: s
 type Mangel = { id: string; titel: string; dringlichkeit: 'kritisch' | 'mittel' | 'gering'; status: string; frist: string | null; projekt_id: string }
 type Rechnung = { id: string; rechnungsnummer: string; summe_netto_cents: number; status: string; faellig_am: string | null; projekt_id: string }
 type Abnahme = { id: string; datum: string; ergebnis: 'mangelfrei' | 'mit_maengeln' | 'verweigert'; gewaehrleistungsfrist_jahre: number; projekt_id: string }
+type Steuervorgang = { id: string; art: string; zeitraum: string | null; faellig_am: string; status: 'offen' | 'erledigt' }
 
 function gewaehrleistungBis(datum: string, jahre: number): Date {
   const d = new Date(datum)
@@ -158,6 +159,7 @@ export default function Dashboard() {
   const [maengel, setMaengel] = useState<Mangel[]>([])
   const [rechnungen, setRechnungen] = useState<Rechnung[]>([])
   const [abnahmen, setAbnahmen] = useState<Abnahme[]>([])
+  const [steuervorgaenge, setSteuervorgaenge] = useState<Steuervorgang[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
 
   useEffect(() => {
@@ -197,7 +199,7 @@ export default function Dashboard() {
 
   const laden = useCallback(async () => {
     setLadeStatus('laedt')
-    const [{ data: pData }, { data: aData }, { data: mData }, { data: rData }, { data: abData }] = await Promise.all([
+    const [{ data: pData }, { data: aData }, { data: mData }, { data: rData }, { data: abData }, { data: svData }] = await Promise.all([
       supabase.from('projekte').select('id, name, status'),
       supabase
         .from('aufgaben')
@@ -218,12 +220,17 @@ export default function Dashboard() {
         .from('abnahmen')
         .select('id, datum, ergebnis, gewaehrleistungsfrist_jahre, projekt_id')
         .neq('ergebnis', 'verweigert'),
+      supabase
+        .from('steuervorgaenge')
+        .select('id, art, zeitraum, faellig_am, status')
+        .eq('status', 'offen'),
     ])
     setProjekte((pData ?? []) as Projekt[])
     setAufgaben((aData ?? []) as Aufgabe[])
     setMaengel((mData ?? []) as Mangel[])
     setRechnungen((rData ?? []) as Rechnung[])
     setAbnahmen((abData ?? []) as Abnahme[])
+    setSteuervorgaenge((svData ?? []) as Steuervorgang[])
     setLadeStatus('bereit')
   }, [])
 
@@ -256,6 +263,20 @@ export default function Dashboard() {
       return tageBisAblauf <= 90 && tageBisAblauf >= -30
     })
     .sort((a, b) => a.bis.getTime() - b.bis.getTime())
+
+  // Steuertermine in den nächsten 30 Tagen oder überfällig - dieselbe
+  // Nicht-versickern-Logik wie bei den Gewährleistungsfristen. Leer für
+  // alle ohne Finanzrolle, weil die RLS die Tabelle entsprechend filtert.
+  const STEUERART_LABEL_DASH: Record<string, string> = {
+    ust_voranmeldung: 'USt-Voranmeldung',
+    gewerbesteuer_vorauszahlung: 'Gewerbesteuer-Vorauszahlung',
+    einkommensteuer_vorauszahlung: 'Einkommensteuer-Vorauszahlung',
+    sonstige: 'Sonstige',
+  }
+  const dreissigTageGrenze = alsIsoDatum(new Date(jetzt.getTime() + 30 * 86400000))
+  const baldFaelligeSteuervorgaenge = steuervorgaenge
+    .filter((v) => v.faellig_am <= dreissigTageGrenze)
+    .sort((a, b) => (a.faellig_am < b.faellig_am ? -1 : 1))
 
   return (
     <AppShell title="Dashboard" subtitle={aktivFirma?.name} wide>
@@ -461,6 +482,36 @@ export default function Dashboard() {
                       </div>
                       <span style={pillStil(abgelaufen ? 'bad' : 'warn')}>
                         {abgelaufen ? 'Abgelaufen' : `bis ${a.bis.toLocaleDateString('de-DE')}`}
+                      </span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
+              <h3 style={{ fontSize: 14, color: 'var(--ink-faint)', margin: '0 0 10px', fontWeight: 700 }}>
+                Steuertermine im Blick
+              </h3>
+              <div style={{ ...karteStil, padding: '8px 10px' }}>
+                {baldFaelligeSteuervorgaenge.length === 0 && (
+                  <p style={{ padding: 16, color: 'var(--ink-faint)', fontSize: 13.5 }}>Kein Steuertermin in den nächsten 30 Tagen.</p>
+                )}
+                {baldFaelligeSteuervorgaenge.map((v) => {
+                  const ueberfaellig = istUeberfaellig(v.faellig_am, heuteIso)
+                  return (
+                    <Link
+                      key={v.id}
+                      to="/finanzen?tab=steuern"
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 12px', borderBottom: '1px solid rgba(23,20,14,.08)', textDecoration: 'none', color: 'inherit' }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {STEUERART_LABEL_DASH[v.art] ?? v.art}{v.zeitraum ? ` · ${v.zeitraum}` : ''}
+                        </div>
+                      </div>
+                      <span style={pillStil(ueberfaellig ? 'bad' : 'warn')}>
+                        {ueberfaellig ? 'Überfällig' : new Date(v.faellig_am).toLocaleDateString('de-DE')}
                       </span>
                     </Link>
                   )

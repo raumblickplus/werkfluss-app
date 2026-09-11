@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
-import { karteStil, pillStil, projektStatusLabel, projektStatusVariante } from './stil'
+import { karteStil, pillStil, projektStatusLabel, projektStatusVariante, eingabeStil, knopfStil, knopfSekundaerStil } from './stil'
 
-type Tab = 'uebersicht' | 'buchhaltung'
+type Tab = 'uebersicht' | 'buchhaltung' | 'steuern'
 const tabs: { key: Tab; label: string }[] = [
   { key: 'uebersicht', label: 'Übersicht' },
   { key: 'buchhaltung', label: 'Buchhaltung' },
+  { key: 'steuern', label: 'Steuern' },
 ]
 
 type ProjektZeile = { id: string; name: string; status: string; kunde_rechnungsadresse: string | null }
@@ -463,6 +464,7 @@ export default function Finanzen() {
       )}
 
       {aktivTab === 'buchhaltung' && <BuchhaltungTab />}
+      {aktivTab === 'steuern' && <SteuernTab />}
     </AppShell>
   )
 }
@@ -800,6 +802,273 @@ function BuchhaltungSchritt({ titel, text }: { titel: string; text: string }) {
     <div style={{ ...karteStil, padding: '18px 20px' }}>
       <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 700, marginBottom: 6, color: 'var(--olive-light)' }}>{titel}</div>
       <div style={{ fontSize: 12.5, color: 'var(--ink-dim)', lineHeight: 1.6 }}>{text}</div>
+    </div>
+  )
+}
+
+// Steuerabgaben-Uebersicht (Konzept Abschnitt 8.7/8.12): Faelligkeitskalender
+// fuer wiederkehrende Steuertermine plus eine unverbindliche, regelbasierte
+// Schaetzung der Umsatzsteuer auf bereits gestellte Ausgangsrechnungen -
+// bisher komplett unumgesetzt, obwohl Mahnwesen und DATEV-Export aus
+// demselben Abschnitt schon laengst gebaut sind.
+const STEUERART_LABEL: Record<string, string> = {
+  ust_voranmeldung: 'USt-Voranmeldung',
+  gewerbesteuer_vorauszahlung: 'Gewerbesteuer-Vorauszahlung',
+  einkommensteuer_vorauszahlung: 'Einkommensteuer-Vorauszahlung',
+  sonstige: 'Sonstige',
+}
+
+type Steuervorgang = {
+  id: string
+  art: string
+  zeitraum: string | null
+  faellig_am: string
+  status: 'offen' | 'erledigt'
+  geschaetzter_betrag_cents: number | null
+  notiz: string | null
+}
+
+function SteuernTab() {
+  const { aktivFirma, session } = useAuth()
+  const [vorgaenge, setVorgaenge] = useState<Steuervorgang[]>([])
+  const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
+  const [zeigeFormular, setZeigeFormular] = useState(false)
+  const [zeigeErledigte, setZeigeErledigte] = useState(false)
+
+  const [art, setArt] = useState('ust_voranmeldung')
+  const [zeitraum, setZeitraum] = useState('')
+  const [faelligAm, setFaelligAm] = useState('')
+  const [betrag, setBetrag] = useState('')
+  const [notiz, setNotiz] = useState('')
+  const [speichert, setSpeichert] = useState(false)
+
+  const [schaetzungVon, setSchaetzungVon] = useState(ersterTagDesMonatsIso())
+  const [schaetzungBis, setSchaetzungBis] = useState(heuteIsoDatum())
+  const [schaetzungLaeuft, setSchaetzungLaeuft] = useState(false)
+  const [schaetzungFehler, setSchaetzungFehler] = useState<string | null>(null)
+  const [schaetzung, setSchaetzung] = useState<{ nettoCents: number; ustCents: number; anzahl: number } | null>(null)
+
+  async function laden() {
+    if (!aktivFirma) return
+    setLadeStatus('laedt')
+    const { data } = await supabase
+      .from('steuervorgaenge')
+      .select('id, art, zeitraum, faellig_am, status, geschaetzter_betrag_cents, notiz')
+      .eq('firma_id', aktivFirma.id)
+      .order('faellig_am', { ascending: true })
+    setVorgaenge((data ?? []) as Steuervorgang[])
+    setLadeStatus('bereit')
+  }
+
+  useEffect(() => { laden() }, [aktivFirma?.id])
+
+  async function anlegen(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!aktivFirma || !faelligAm) return
+    setSpeichert(true)
+    const betragCents = betrag.trim() ? Math.round(parseFloat(betrag.replace(',', '.')) * 100) : null
+    const { error } = await supabase.from('steuervorgaenge').insert({
+      firma_id: aktivFirma.id,
+      art,
+      zeitraum: zeitraum.trim() || null,
+      faellig_am: faelligAm,
+      geschaetzter_betrag_cents: Number.isFinite(betragCents) ? betragCents : null,
+      notiz: notiz.trim() || null,
+      erstellt_von: session?.user?.id ?? null,
+    })
+    setSpeichert(false)
+    if (!error) {
+      setZeitraum(''); setFaelligAm(''); setBetrag(''); setNotiz('')
+      setZeigeFormular(false)
+      laden()
+    }
+  }
+
+  async function statusUmschalten(v: Steuervorgang) {
+    const neu = v.status === 'erledigt' ? 'offen' : 'erledigt'
+    setVorgaenge((prev) => prev.map((x) => (x.id === v.id ? { ...x, status: neu } : x)))
+    await supabase.from('steuervorgaenge').update({ status: neu }).eq('id', v.id)
+  }
+
+  async function loeschen(v: Steuervorgang) {
+    if (!confirm('Diesen Steuertermin wirklich löschen?')) return
+    setVorgaenge((prev) => prev.filter((x) => x.id !== v.id))
+    await supabase.from('steuervorgaenge').delete().eq('id', v.id)
+  }
+
+  async function schaetzungBerechnen() {
+    if (!aktivFirma) return
+    setSchaetzungLaeuft(true)
+    setSchaetzungFehler(null)
+    setSchaetzung(null)
+    const { data, error } = await supabase
+      .from('rechnungen_ausgang')
+      .select('summe_netto_cents, mwst_satz, status, erstellt_am, projekte!inner(firma_id)')
+      .eq('projekte.firma_id', aktivFirma.id)
+      .neq('status', 'storniert')
+      .gte('erstellt_am', schaetzungVon)
+      .lte('erstellt_am', `${schaetzungBis}T23:59:59`)
+    setSchaetzungLaeuft(false)
+    if (error) { setSchaetzungFehler('Rechnungen konnten nicht geladen werden.'); return }
+    const zeilen = (data ?? []) as unknown as { summe_netto_cents: number; mwst_satz: number }[]
+    if (zeilen.length === 0) { setSchaetzungFehler('Keine Rechnungen im gewählten Zeitraum gefunden.'); return }
+    const nettoCents = zeilen.reduce((sum, z) => sum + z.summe_netto_cents, 0)
+    const ustCents = zeilen.reduce((sum, z) => sum + Math.round((z.summe_netto_cents * z.mwst_satz) / 100), 0)
+    setSchaetzung({ nettoCents, ustCents, anzahl: zeilen.length })
+  }
+
+  const heuteIso = heuteIsoDatum()
+  const offeneVorgaenge = vorgaenge.filter((v) => v.status === 'offen')
+  const erledigteVorgaenge = vorgaenge.filter((v) => v.status === 'erledigt')
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={karteStil}>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, margin: '0 0 10px' }}>Steuerabgaben-Übersicht</h2>
+        <p style={{ margin: 0, fontSize: 14, color: 'var(--ink-dim)', maxWidth: 640, lineHeight: 1.6 }}>
+          Ein Fälligkeitskalender für wiederkehrende Steuertermine (USt-Voranmeldung, Gewerbesteuer-
+          Vorauszahlung, Einkommensteuer-Vorauszahlung) plus eine grobe Schätzung der Umsatzsteuer auf bereits
+          gestellte Ausgangsrechnungen. <b>Keine Steuerberatung, keine echte Voranmeldung, keine ELSTER-
+          Anbindung</b> – nur damit Fristen nicht in der Alltagshektik untergehen.
+        </p>
+      </div>
+
+      <div style={karteStil}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: 0 }}>Fälligkeitskalender</h2>
+          <button style={knopfStil} onClick={() => setZeigeFormular((v) => !v)}>
+            {zeigeFormular ? 'Abbrechen' : '+ Steuertermin'}
+          </button>
+        </div>
+
+        {zeigeFormular && (
+          <form onSubmit={anlegen} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18, padding: 14, borderRadius: 12, border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,.35)' }}>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)', flex: '1 1 220px' }}>
+                Art
+                <select style={eingabeStil} value={art} onChange={(e) => setArt(e.target.value)}>
+                  {Object.entries(STEUERART_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)', flex: '1 1 160px' }}>
+                Zeitraum (optional)
+                <input style={eingabeStil} value={zeitraum} onChange={(e) => setZeitraum(e.target.value)} placeholder="z. B. Q3 2026" />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)', flex: '1 1 160px' }}>
+                Fällig am
+                <input type="date" style={eingabeStil} value={faelligAm} onChange={(e) => setFaelligAm(e.target.value)} required />
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)', flex: '1 1 160px' }}>
+                Geschätzter Betrag in € (optional)
+                <input style={eingabeStil} value={betrag} onChange={(e) => setBetrag(e.target.value)} placeholder="z. B. 2400" />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)', flex: '2 1 220px' }}>
+                Notiz (optional)
+                <input style={eingabeStil} value={notiz} onChange={(e) => setNotiz(e.target.value)} placeholder="z. B. Steuerberater XY informiert" />
+              </label>
+            </div>
+            <button type="submit" style={knopfStil} disabled={speichert || !faelligAm}>
+              {speichert ? 'Speichert …' : 'Steuertermin speichern'}
+            </button>
+          </form>
+        )}
+
+        {ladeStatus === 'laedt' && <p style={{ color: 'var(--ink-faint)', fontSize: 13 }}>Lädt …</p>}
+        {ladeStatus === 'bereit' && offeneVorgaenge.length === 0 && (
+          <p style={{ color: 'var(--ink-faint)', fontSize: 13 }}>Keine offenen Steuertermine.</p>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {offeneVorgaenge.map((v) => {
+            const ueberfaellig = v.faellig_am < heuteIso
+            return (
+              <div key={v.id} style={{ ...karteStil, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, cursor: 'pointer', minWidth: 220 }}>
+                  <input type="checkbox" checked={false} onChange={() => statusUmschalten(v)} />
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>
+                    {STEUERART_LABEL[v.art] ?? v.art}{v.zeitraum ? ` · ${v.zeitraum}` : ''}
+                  </span>
+                </label>
+                {v.geschaetzter_betrag_cents != null && (
+                  <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>~ {(v.geschaetzter_betrag_cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</span>
+                )}
+                <span style={pillStil(ueberfaellig ? 'bad' : 'neutral')}>{new Date(v.faellig_am).toLocaleDateString('de-DE')}</span>
+                <button onClick={() => loeschen(v)} title="Entfernen" style={{ all: 'unset', cursor: 'pointer', fontSize: 13, color: 'var(--ink-faint)', padding: '0 4px' }}>×</button>
+              </div>
+            )
+          })}
+        </div>
+
+        {erledigteVorgaenge.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <button onClick={() => setZeigeErledigte((v) => !v)} style={{ all: 'unset', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--olive)' }}>
+              {zeigeErledigte ? 'Erledigte ausblenden' : `${erledigteVorgaenge.length} erledigte anzeigen`}
+            </button>
+            {zeigeErledigte && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+                {erledigteVorgaenge.map((v) => (
+                  <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12.5, color: 'var(--ink-faint)' }}>
+                    <input type="checkbox" checked={true} onChange={() => statusUmschalten(v)} />
+                    <span style={{ textDecoration: 'line-through' }}>{STEUERART_LABEL[v.art] ?? v.art}{v.zeitraum ? ` · ${v.zeitraum}` : ''}</span>
+                    <span>{new Date(v.faellig_am).toLocaleDateString('de-DE')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={karteStil}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 17, margin: 0 }}>Umsatzsteuer-Schätzung</h2>
+          <span style={pillStil('warn')}>Unverbindlich</span>
+        </div>
+        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: 'var(--ink-dim)', lineHeight: 1.6, maxWidth: 640 }}>
+          Summiert die Umsatzsteuer auf alle Ausgangsrechnungen im gewählten Zeitraum. Werkfluss erfasst bisher
+          keine Eingangsrechnungen/Vorsteuer – das ist also <b>nicht deine tatsächliche Zahllast</b>, sondern nur
+          die Umsatzsteuer auf das, was du in Rechnung gestellt hast, als grober Anhaltspunkt für die
+          Voranmeldung.
+        </p>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)' }}>
+            Zeitraum von
+            <input type="date" style={eingabeStil} value={schaetzungVon} onChange={(e) => setSchaetzungVon(e.target.value)} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: 'var(--ink-dim)' }}>
+            bis
+            <input type="date" style={eingabeStil} value={schaetzungBis} onChange={(e) => setSchaetzungBis(e.target.value)} />
+          </label>
+          <button style={knopfSekundaerStil} onClick={schaetzungBerechnen} disabled={schaetzungLaeuft}>
+            {schaetzungLaeuft ? 'Berechnet …' : 'Schätzung berechnen'}
+          </button>
+        </div>
+        {schaetzungFehler && <p style={{ margin: '10px 0 0', fontSize: 12.5, color: 'var(--red)' }}>{schaetzungFehler}</p>}
+        {schaetzung && (
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 16 }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Netto-Umsatz</div>
+              <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 20, fontWeight: 700 }}>{(schaetzung.nettoCents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Geschätzte USt. (ohne Vorsteuer)</div>
+              <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 20, fontWeight: 700, color: 'var(--olive-light)' }}>{(schaetzung.ustCents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Rechnungen</div>
+              <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 20, fontWeight: 700 }}>{schaetzung.anzahl}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <p className="footnote">
+        Fälligkeitskalender und Schätzung sind rein regelbasiert (keine KI) und ersetzen keine Steuerberatung.
+        Eine echte Umsatzsteuervoranmeldung, eine ELSTER-Anbindung und die Berücksichtigung von Vorsteuer aus
+        Eingangsrechnungen sind bewusst nicht Teil dieser Umsetzung.
+      </p>
     </div>
   )
 }
