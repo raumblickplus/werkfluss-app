@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
 import { karteStil, eingabeStil, knopfStil, knopfSekundaerStil } from './stil'
+import { SPRACHEN } from '../components/UebersetzterText'
 
 type FirmaDetails = {
   id: string
@@ -27,6 +28,7 @@ export default function Einstellungen() {
   const [email, setEmail] = useState('')
   const [profilLadeStatus, setProfilLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
   const [profilSpeichern, setProfilSpeichern] = useState<'bereit' | 'speichert' | 'gespeichert' | 'fehler'>('bereit')
+  const [bevorzugteSprache, setBevorzugteSprache] = useState('DE')
 
   // Passwort
   const [neuesPasswort, setNeuesPasswort] = useState('')
@@ -60,7 +62,7 @@ export default function Einstellungen() {
     setProfilLadeStatus('laedt')
     supabase
       .from('profile')
-      .select('vollname, telefon, email')
+      .select('vollname, telefon, email, bevorzugte_sprache')
       .eq('id', nutzerId)
       .maybeSingle()
       .then(({ data }) => {
@@ -68,6 +70,7 @@ export default function Einstellungen() {
           setVollname(data.vollname ?? '')
           setTelefon(data.telefon ?? '')
           setEmail(data.email ?? '')
+          setBevorzugteSprache((data as { bevorzugte_sprache?: string }).bevorzugte_sprache ?? 'DE')
         }
         setProfilLadeStatus('bereit')
       })
@@ -107,7 +110,7 @@ export default function Einstellungen() {
     const nutzerId = session?.user?.id
     if (!nutzerId) return
     setProfilSpeichern('speichert')
-    const { error } = await supabase.from('profile').update({ vollname, telefon: telefon || null }).eq('id', nutzerId)
+    const { error } = await supabase.from('profile').update({ vollname, telefon: telefon || null, bevorzugte_sprache: bevorzugteSprache }).eq('id', nutzerId)
     if (error) { setProfilSpeichern('fehler'); return }
     setProfilSpeichern('gespeichert')
     setTimeout(() => setProfilSpeichern('bereit'), 2000)
@@ -221,6 +224,17 @@ export default function Einstellungen() {
             <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-faint)' }}>
               Ändern der E-Mail-Adresse folgt später (braucht eine Bestätigungs-Mail).
             </p>
+            <div className="field" style={{ maxWidth: 260 }}>
+              <label>Sprache für Übersetzungen</label>
+              <select style={eingabeStil} value={bevorzugteSprache} onChange={(e) => setBevorzugteSprache(e.target.value)}>
+                {SPRACHEN.map((s) => (
+                  <option key={s.code} value={s.code}>{s.label}</option>
+                ))}
+              </select>
+              <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--ink-faint)' }}>
+                Bautagebuch- und Tagesbericht-Einträge werden dir automatisch in dieser Sprache angezeigt (bei Deutsch keine Übersetzung).
+              </p>
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button type="submit" style={knopfStil} disabled={profilSpeichern === 'speichert'}>
                 {profilSpeichern === 'speichert' ? 'Speichert …' : 'Profil speichern'}

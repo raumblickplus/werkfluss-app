@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { adresseZuKoordinaten, aktuellesWetter, type Koordinaten } from '../../lib/wetter'
 import { eingabeStil, knopfStil, karteStil } from '../stil'
+import { useAuth } from '../../lib/AuthContext'
+import { UebersetzterText } from '../../components/UebersetzterText'
 
 type Gewerk = { id: string; name: string }
 type Standardaufgabe = { id: string; titel: string }
@@ -42,6 +44,8 @@ type Props = {
 }
 
 export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) {
+  const { session } = useAuth()
+  const [bevorzugteSprache, setBevorzugteSprache] = useState('DE')
   const [eintraege, setEintraege] = useState<Eintrag[]>([])
   const [ladeStatus, setLadeStatus] = useState<'laedt' | 'bereit' | 'fehler'>('laedt')
   const [zeigeFormular, setZeigeFormular] = useState(false)
@@ -66,6 +70,17 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
   const [einschaetzungenByFoto, setEinschaetzungenByFoto] = useState<Map<string, FotoErgebnis>>(new Map())
   const [ladendeFotos, setLadendeFotos] = useState<Set<string>>(new Set())
   const [einschaetzungFehler, setEinschaetzungFehler] = useState<string | null>(null)
+
+  useEffect(() => {
+    const nutzerId = session?.user?.id
+    if (!nutzerId) return
+    supabase
+      .from('profile')
+      .select('bevorzugte_sprache')
+      .eq('id', nutzerId)
+      .maybeSingle()
+      .then(({ data }) => setBevorzugteSprache((data as { bevorzugte_sprache?: string } | null)?.bevorzugte_sprache ?? 'DE'))
+  }, [session?.user?.id])
 
   async function laden() {
     setLadeStatus('laedt')
@@ -411,8 +426,16 @@ export default function Bautagebuch({ projektId, adresse, koordinaten }: Props) 
                 </div>
               )}
 
-              {e.taetigkeiten && <div style={{ fontSize: 14 }}>{e.taetigkeiten}</div>}
-              {e.besonderheiten && <div style={{ fontSize: 13, color: 'var(--orange-text)', marginTop: 6 }}>⚠ {e.besonderheiten}</div>}
+              {e.taetigkeiten && (
+                <div style={{ fontSize: 14 }}>
+                  <UebersetzterText eintragId={e.id} feld="taetigkeiten" original={e.taetigkeiten} zielsprache={bevorzugteSprache} />
+                </div>
+              )}
+              {e.besonderheiten && (
+                <div style={{ fontSize: 13, color: 'var(--orange-text)', marginTop: 6 }}>
+                  ⚠ <UebersetzterText eintragId={e.id} feld="besonderheiten" original={e.besonderheiten} zielsprache={bevorzugteSprache} />
+                </div>
+              )}
 
               {e.fotos.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>

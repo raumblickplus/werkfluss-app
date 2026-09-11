@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
 import { karteStil, pillStil, knopfSekundaerStil } from './stil'
+import { UebersetzterText } from '../components/UebersetzterText'
 
 type ProjektZeile = { id: string; name: string; status: string }
 type Eintrag = {
@@ -65,8 +66,20 @@ function BuchIcon({ groesse = 38 }: { groesse?: number }) {
 }
 
 export default function Tagesbericht() {
-  const { aktivFirma } = useAuth()
+  const { aktivFirma, session } = useAuth()
+  const [bevorzugteSprache, setBevorzugteSprache] = useState('DE')
   const heuteIso = useMemo(() => alsIsoDatum(new Date()), [])
+
+  useEffect(() => {
+    const nutzerId = session?.user?.id
+    if (!nutzerId) return
+    supabase
+      .from('profile')
+      .select('bevorzugte_sprache')
+      .eq('id', nutzerId)
+      .maybeSingle()
+      .then(({ data }) => setBevorzugteSprache((data as { bevorzugte_sprache?: string } | null)?.bevorzugte_sprache ?? 'DE'))
+  }, [session?.user?.id])
   const [datum, setDatum] = useState(heuteIso)
   const [projekte, setProjekte] = useState<ProjektZeile[]>([])
   const [eintraege, setEintraege] = useState<Eintrag[]>([])
@@ -349,11 +362,13 @@ export default function Tagesbericht() {
                       )}
                       {e.taetigkeiten && (
                         <div style={{ fontSize: 12.5, color: 'var(--ink-dim)', marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                          {e.taetigkeiten}
+                          <UebersetzterText eintragId={e.id} feld="taetigkeiten" original={e.taetigkeiten} zielsprache={bevorzugteSprache} mitUmschalter={false} />
                         </div>
                       )}
                       {e.besonderheiten && (
-                        <div style={{ fontSize: 12, color: 'var(--orange-text)', marginTop: 4 }}>⚠ {e.besonderheiten}</div>
+                        <div style={{ fontSize: 12, color: 'var(--orange-text)', marginTop: 4 }}>
+                          ⚠ <UebersetzterText eintragId={e.id} feld="besonderheiten" original={e.besonderheiten} zielsprache={bevorzugteSprache} mitUmschalter={false} />
+                        </div>
                       )}
                     </Link>
                   ))}
