@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { eingabeStil, knopfStil, knopfSekundaerStil, karteStil, pillStil } from '../stil'
+import Unterschriftenfeld, { type UnterschriftenfeldHandle } from '../../components/Unterschriftenfeld'
 
 type Ergebnis = 'mangelfrei' | 'mit_maengeln' | 'verweigert'
 
@@ -13,6 +14,7 @@ type Abnahme = {
   erstellt_am: string
   bestaetigt_von_name: string | null
   gewaehrleistungsfrist_jahre: number
+  unterschrift_pfad: string | null
 }
 
 function gewaehrleistungBis(datum: string, jahre: number): Date {
@@ -55,6 +57,7 @@ export default function Abnahme({ projektId }: { projektId: string }) {
   const [notizen, setNotizen] = useState('')
   const [restmangelZeilen, setRestmangelZeilen] = useState<{ titel: string; frist: string }[]>([{ titel: '', frist: '' }])
   const [gewaehrleistungsfristJahre, setGewaehrleistungsfristJahre] = useState(5)
+  const unterschriftRef = useRef<UnterschriftenfeldHandle>(null)
 
   // Eigenständiges Schnellformular für einen "normalen" Mangel, unabhängig
   // von einem konkreten Abnahmeprotokoll - z. B. wenn bei der Begehung
@@ -75,7 +78,7 @@ export default function Abnahme({ projektId }: { projektId: string }) {
     setLadeStatus('laedt')
     const { data, error } = await supabase
       .from('abnahmen')
-      .select('id, datum, ergebnis, teilnehmer, notizen, erstellt_am, gewaehrleistungsfrist_jahre, profile(vollname)')
+      .select('id, datum, ergebnis, teilnehmer, notizen, erstellt_am, gewaehrleistungsfrist_jahre, unterschrift_pfad, profile(vollname)')
       .eq('projekt_id', projektId)
       .order('datum', { ascending: false })
 
@@ -135,6 +138,21 @@ export default function Abnahme({ projektId }: { projektId: string }) {
       .single()
 
     if (!error && neueAbnahme) {
+      // Unterschrift ist optional - nur hochladen, wenn tatsächlich etwas
+      // gezeichnet wurde. Bucket 'abnahme-unterschriften' ist nicht-
+      // öffentlich, Pfad-Konvention wie bei den Genehmigungsdokumenten.
+      if (unterschriftRef.current?.hatInhalt()) {
+        const blob = await unterschriftRef.current.alsBlob()
+        if (blob) {
+          const pfad = `${projektId}/${neueAbnahme.id}.png`
+          const { error: uploadFehler } = await supabase.storage
+            .from('abnahme-unterschriften')
+            .upload(pfad, blob, { contentType: 'image/png', cacheControl: '3600', upsert: true })
+          if (!uploadFehler) {
+            await supabase.from('abnahmen').update({ unterschrift_pfad: pfad }).eq('id', neueAbnahme.id)
+          }
+        }
+      }
       const gueltigeZeilen = restmangelZeilen.filter((z) => z.titel.trim())
       if (ergebnis !== 'mangelfrei' && gueltigeZeilen.length > 0) {
         await supabase.from('maengel').insert(
@@ -153,10 +171,16 @@ export default function Abnahme({ projektId }: { projektId: string }) {
       setNotizen('')
       setRestmangelZeilen([{ titel: '', frist: '' }])
       setGewaehrleistungsfristJahre(5)
+      unterschriftRef.current?.leeren()
       setZeigeFormular(false)
       laden()
     }
     setSpeichert(false)
+  }
+
+  async function unterschriftOeffnen(pfad: string) {
+    const { data } = await supabase.storage.from('abnahme-unterschriften').createSignedUrl(pfad, 300)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
   }
 
   async function mangelAnlegen(e: FormEvent) {
@@ -359,6 +383,11 @@ export default function Abnahme({ projektId }: { projektId: string }) {
             </div>
           )}
 
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
+            Unterschrift (optional)
+            <Unterschriftenfeld ref={unterschriftRef} />
+          </label>
+
           <button type="submit" style={knopfStil} disabled={speichert}>
             {speichert ? 'Speichert …' : 'Abnahme bestätigen und speichern'}
           </button>
@@ -401,9 +430,20 @@ export default function Abnahme({ projektId }: { projektId: string }) {
                   ))}
                 </div>
               )}
-              <span style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>
-                Bestätigt von {a.bestaetigt_von_name ?? 'Unbekannt'} am {new Date(a.erstellt_am).toLocaleDateString('de-DE')}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>
+                  Bestätigt von {a.bestaetigt_von_name ?? 'Unbekannt'} am {new Date(a.erstellt_am).toLocaleDateString('de-DE')}
+                </span>
+                {a.unterschrift_pfad && (
+                  <button
+                    type="button"
+                    onClick={() => unterschriftOeffnen(a.unterschrift_pfad!)}
+                    style={{ ...pillStil('neutral'), border: 'none', cursor: 'pointer' }}
+                  >
+                    Unterschrift ansehen
+                  </button>
+                )}
+              </div>
             </div>
           )
         })}
