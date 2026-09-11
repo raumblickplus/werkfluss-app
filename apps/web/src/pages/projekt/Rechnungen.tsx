@@ -192,10 +192,10 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
     const [{ data: rechnungenData, error: rechnungenFehler }, { data: auftraegeData }] = await Promise.all([
       supabase
         .from('rechnungen_ausgang')
-        .select('id, auftrag_id, rechnungsnummer, typ, summe_netto_cents, mwst_satz, status, faellig_am, bestellreferenz, erstellt_am, auftraege(id, firmen(id, name))')
+        .select('id, auftrag_id, rechnungsnummer, typ, summe_netto_cents, mwst_satz, status, faellig_am, bestellreferenz, erstellt_am, auftraege(id, firmen!auftragnehmer_firma_id(id, name))')
         .eq('projekt_id', projektId)
         .order('erstellt_am', { ascending: false }),
-      supabase.from('auftraege').select('id, angebot_id, firmen(id, name)').eq('projekt_id', projektId),
+      supabase.from('auftraege').select('id, angebot_id, firmen!auftragnehmer_firma_id(id, name)').eq('projekt_id', projektId),
     ])
     if (rechnungenFehler) { setLadeStatus('fehler'); return }
     const liste = (rechnungenData ?? []) as unknown as Rechnung[]

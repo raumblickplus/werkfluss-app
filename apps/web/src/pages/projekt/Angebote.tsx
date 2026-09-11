@@ -142,7 +142,7 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
         .order('erstellt_am', { ascending: false }),
       supabase
         .from('auftraege')
-        .select('id, angebot_id, summe_netto_cents, status, erstellt_am, firmen(id, name)')
+        .select('id, angebot_id, summe_netto_cents, status, erstellt_am, firmen!auftragnehmer_firma_id(id, name)')
         .eq('projekt_id', projektId)
         .order('erstellt_am', { ascending: false }),
       supabase.from('projekt_mitglieder').select('firmen(id, name)').eq('projekt_id', projektId),
@@ -434,6 +434,7 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
     const { error } = await supabase.from('auftraege').insert({
       projekt_id: projektId,
       angebot_id: angebot.id,
+      auftraggeber_firma_id: aktivFirma.id,
       auftragnehmer_firma_id: angebot.firmen.id,
       summe_netto_cents: angebot.summe_netto_cents,
     })

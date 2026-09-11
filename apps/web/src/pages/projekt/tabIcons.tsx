@@ -53,6 +53,14 @@ export const tabIcons: Record<string, ReactNode> = {
       <path d="M16 8.5h.01" />
     </Svg>
   ),
+  subunternehmer: (
+    <Svg>
+      <circle cx="12" cy="5" r="2.3" />
+      <circle cx="6" cy="19" r="2.3" />
+      <circle cx="18" cy="19" r="2.3" />
+      <path d="M12 7.3v3.2M12 10.5 6 16.7M12 10.5l6 6.2" />
+    </Svg>
+  ),
   bautagebuch: (
     <Svg>
       <path d="M4 5.5c2.5-1 5-1 8 .5v13c-3-1.5-5.5-1.5-8-.5v-13Z" />

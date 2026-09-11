@@ -89,7 +89,7 @@ export default function Faelle({ projektId, istEigentuemer }: { projektId: strin
         .select('id, fall_id, typ, beschreibung, frist_bis, erstellt_am, faelle!inner(projekt_id)')
         .eq('faelle.projekt_id', projektId)
         .order('erstellt_am', { ascending: true }),
-      supabase.from('auftraege').select('id, summe_netto_cents, firmen(id, name), angebote(gewerk)').eq('projekt_id', projektId).eq('status', 'aktiv'),
+      supabase.from('auftraege').select('id, summe_netto_cents, firmen!auftragnehmer_firma_id(id, name), angebote(gewerk)').eq('projekt_id', projektId).eq('status', 'aktiv'),
     ])
     setFaelle((fData ?? []) as Fall[])
     setEreignisse((eData ?? []) as unknown as FallEreignis[])

@@ -7,6 +7,7 @@ import Uebersicht, { type ProjektDetails } from './projekt/Uebersicht'
 import Ausschreibung from './projekt/Ausschreibung'
 import Kommunikation from './projekt/Kommunikation'
 import Angebote from './projekt/Angebote'
+import Subunternehmer from './projekt/Subunternehmer'
 import Bautagebuch from './projekt/Bautagebuch'
 import Maengel from './projekt/Maengel'
 import Aufgaben from './projekt/Aufgaben'
@@ -25,13 +26,14 @@ import { tabIcons, gruppenIcons } from './projekt/tabIcons'
 import { projektStatusLabel, projektStatusVariante, pillStil } from './stil'
 
 type Projekt = ProjektDetails & { firma_id: string; breitengrad: number | null; laengengrad: number | null }
-type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'faelle' | 'rechnungen' | 'foerdermittel' | 'genehmigungen' | 'technik' | 'stundenzettel' | 'spesen' | 'dokumente' | 'leistungsphasen' | 'bedenken'
+type Tab = 'uebersicht' | 'ausschreibung' | 'kommunikation' | 'angebote' | 'subunternehmer' | 'bautagebuch' | 'maengel' | 'aufgaben' | 'abnahme' | 'faelle' | 'rechnungen' | 'foerdermittel' | 'genehmigungen' | 'technik' | 'stundenzettel' | 'spesen' | 'dokumente' | 'leistungsphasen' | 'bedenken'
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'uebersicht', label: 'Übersicht' },
   { key: 'ausschreibung', label: 'Ausschreibung & LV' },
   { key: 'kommunikation', label: 'Kommunikation' },
   { key: 'angebote', label: 'Angebote' },
+  { key: 'subunternehmer', label: 'Subunternehmer' },
   { key: 'bautagebuch', label: 'Bautagebuch' },
   { key: 'maengel', label: 'Mängel' },
   { key: 'aufgaben', label: 'Aufgaben' },
@@ -62,7 +64,7 @@ type TabGruppe = { label: string; tabs: Tab[] }
 const tabGruppen: TabGruppe[] = [
   { label: 'Planung', tabs: ['ausschreibung', 'leistungsphasen', 'genehmigungen', 'foerdermittel'] },
   { label: 'Ausführung', tabs: ['bautagebuch', 'aufgaben', 'maengel', 'bedenken', 'technik', 'stundenzettel', 'spesen', 'dokumente'] },
-  { label: 'Abrechnung', tabs: ['angebote', 'rechnungen'] },
+  { label: 'Abrechnung', tabs: ['angebote', 'subunternehmer', 'rechnungen'] },
   { label: 'Abschluss', tabs: ['abnahme', 'faelle'] },
 ]
 function labelVon(key: Tab) {
@@ -221,6 +223,7 @@ export default function ProjektDetail() {
       {aktivTab === 'ausschreibung' && <Ausschreibung projektId={id} istEigentuemer={istEigentuemer} />}
       {aktivTab === 'kommunikation' && <Kommunikation projektId={id} />}
       {aktivTab === 'angebote' && <Angebote projektId={id} istEigentuemer={istEigentuemer} />}
+      {aktivTab === 'subunternehmer' && <Subunternehmer projektId={id} />}
       {aktivTab === 'bautagebuch' && (
         <Bautagebuch
           projektId={id}
