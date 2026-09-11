@@ -104,7 +104,7 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
     if (aktivFirma) {
       supabase
         .from('firmen')
-        .select('name, rechtsform, adresse, ust_id, telefon, email, iban')
+        .select('name, rechtsform, adresse, ust_id, telefon, email, iban, logo_url, akzentfarbe')
         .eq('id', aktivFirma.id)
         .maybeSingle()
         .then(({ data, error }) => {
@@ -140,7 +140,7 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
       kundeRechnungsadresse: projektFuerDruck.kunde_rechnungsadresse,
       auftragBezeichnung: r.auftraege?.firmen ? `Auftrag ${r.auftraege.firmen.name}` : null,
     })
-    dokumentDrucken(`${r.rechnungsnummer} – ${projektFuerDruck.name}`, html)
+    dokumentDrucken(`${r.rechnungsnummer} – ${projektFuerDruck.name}`, html, druckFirma.akzentfarbe)
   }
 
   async function auftragAusgewaehlt(neueAuftragId: string) {

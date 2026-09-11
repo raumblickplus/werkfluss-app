@@ -14,6 +14,8 @@ type FirmaDetails = {
   telefon: string | null
   email: string | null
   iban: string | null
+  logo_url: string | null
+  akzentfarbe: string
 }
 
 export default function Einstellungen() {
@@ -24,6 +26,8 @@ export default function Einstellungen() {
   const [firma, setFirma] = useState<FirmaDetails | null>(null)
   const [firmaLadeStatus, setFirmaLadeStatus] = useState<'laedt' | 'bereit'>('laedt')
   const [firmaSpeichern, setFirmaSpeichern] = useState<'bereit' | 'speichert' | 'gespeichert' | 'fehler'>('bereit')
+  const [logoDatei, setLogoDatei] = useState<File | null>(null)
+  const [logoStatus, setLogoStatus] = useState<'bereit' | 'laedt-hoch' | 'fehler'>('bereit')
 
   // Profil
   const [vollname, setVollname] = useState('')
@@ -50,7 +54,7 @@ export default function Einstellungen() {
     setFirmaLadeStatus('laedt')
     supabase
       .from('firmen')
-      .select('id, name, rechtsform, adresse, ust_id, telefon, email, iban')
+      .select('id, name, rechtsform, adresse, ust_id, telefon, email, iban, logo_url, akzentfarbe')
       .eq('id', aktivFirma.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -100,12 +104,38 @@ export default function Einstellungen() {
     setFirmaSpeichern('speichert')
     const { error } = await supabase
       .from('firmen')
-      .update({ name: firma.name, rechtsform: firma.rechtsform, adresse: firma.adresse, ust_id: firma.ust_id, telefon: firma.telefon, email: firma.email, iban: firma.iban })
+      .update({ name: firma.name, rechtsform: firma.rechtsform, adresse: firma.adresse, ust_id: firma.ust_id, telefon: firma.telefon, email: firma.email, iban: firma.iban, akzentfarbe: firma.akzentfarbe })
       .eq('id', firma.id)
     if (error) { setFirmaSpeichern('fehler'); return }
     setFirmaSpeichern('gespeichert')
     await ladeFirmen()
     setTimeout(() => setFirmaSpeichern('bereit'), 2000)
+  }
+
+  // Firmenlogo (Julian-Feedback 12.09.2026: "mit Logo der Firma") - nutzt
+  // denselben öffentlichen "logos"-Bucket, der in Netzwerk.tsx bereits für
+  // Kontakt-Logos existiert. Fester Dateiname je Firma (upsert), damit ein
+  // erneuter Upload das alte Logo ersetzt statt Speicher zu verschwenden;
+  // ein Zeitstempel-Query-Parameter an der gespeicherten URL verhindert,
+  // dass Browser/Dokumente das alte, zwischengespeicherte Bild weiter zeigen.
+  async function logoHochladen() {
+    if (!firma || !logoDatei) return
+    setLogoStatus('laedt-hoch')
+    const endung = logoDatei.name.split('.').pop() || 'png'
+    const pfad = `${firma.id}/firmenlogo.${endung}`
+    const { error: uploadFehler } = await supabase.storage.from('logos').upload(pfad, await logoDatei.arrayBuffer(), {
+      contentType: logoDatei.type || 'application/octet-stream',
+      cacheControl: '3600',
+      upsert: true,
+    })
+    if (uploadFehler) { setLogoStatus('fehler'); return }
+    const basisUrl = supabase.storage.from('logos').getPublicUrl(pfad).data.publicUrl
+    const logoUrl = `${basisUrl}?v=${Date.now()}`
+    const { error: updateFehler } = await supabase.from('firmen').update({ logo_url: logoUrl }).eq('id', firma.id)
+    if (updateFehler) { setLogoStatus('fehler'); return }
+    setFirma({ ...firma, logo_url: logoUrl })
+    setLogoDatei(null)
+    setLogoStatus('bereit')
   }
 
   async function profilSpeichernHandler(e: FormEvent) {
@@ -206,6 +236,56 @@ export default function Einstellungen() {
               <label>IBAN (für Zahlungshinweis auf Rechnungen, optional)</label>
               <input style={eingabeStil} value={firma.iban ?? ''} disabled={!istAdmin} onChange={(e) => setFirma({ ...firma, iban: e.target.value })} placeholder="DE.." />
             </div>
+
+            <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: 14, marginTop: 4 }}>
+              <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '.03em' }}>
+                Design für Rechnungen, Angebote &amp; Mahnungen
+              </p>
+              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div className="field" style={{ flex: '1 1 220px' }}>
+                  <label>Firmenlogo (optional)</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {firma.logo_url && (
+                      <img src={firma.logo_url} alt="Firmenlogo" style={{ height: 36, maxWidth: 100, objectFit: 'contain', borderRadius: 6, background: 'rgba(255,255,255,.5)', border: '1px solid var(--glass-border)', padding: 4 }} />
+                    )}
+                    {istAdmin && (
+                      <>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                          onChange={(e) => setLogoDatei(e.target.files?.[0] ?? null)}
+                          style={{ fontSize: 11.5, maxWidth: 180 }}
+                        />
+                        <button
+                          type="button"
+                          style={{ ...knopfSekundaerStil, fontSize: 11.5, padding: '6px 12px' }}
+                          disabled={!logoDatei || logoStatus === 'laedt-hoch'}
+                          onClick={logoHochladen}
+                        >
+                          {logoStatus === 'laedt-hoch' ? 'Lädt hoch …' : 'Hochladen'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {logoStatus === 'fehler' && <span style={{ fontSize: 11.5, color: 'var(--red)' }}>Logo konnte nicht gespeichert werden.</span>}
+                </div>
+                <div className="field" style={{ width: 140 }}>
+                  <label>Akzentfarbe</label>
+                  <input
+                    type="color"
+                    value={firma.akzentfarbe}
+                    disabled={!istAdmin}
+                    onChange={(e) => setFirma({ ...firma, akzentfarbe: e.target.value })}
+                    style={{ width: '100%', height: 38, padding: 2, borderRadius: 8, border: '1px solid var(--glass-border)', cursor: istAdmin ? 'pointer' : 'default' }}
+                  />
+                </div>
+              </div>
+              <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--ink-faint)' }}>
+                Logo und Akzentfarbe erscheinen automatisch im Kopf-/Summenblock jeder als PDF gedruckten Rechnung,
+                jedes Angebots und jeder Mahnung. Die Akzentfarbe wird erst mit „Firmendaten speichern" unten übernommen.
+              </p>
+            </div>
+
             {istAdmin && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <button type="submit" style={knopfStil} disabled={firmaSpeichern === 'speichert'}>

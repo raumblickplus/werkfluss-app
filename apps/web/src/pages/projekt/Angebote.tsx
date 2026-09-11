@@ -212,7 +212,7 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
     const fenster = druckfensterOeffnen()
     if (!fenster) return
     const [{ data: firmaData, error: firmaFehler }, { data: posData }] = await Promise.all([
-      supabase.from('firmen').select('name, rechtsform, adresse, ust_id, telefon, email, iban').eq('id', a.firmen.id).maybeSingle(),
+      supabase.from('firmen').select('name, rechtsform, adresse, ust_id, telefon, email, iban, logo_url, akzentfarbe').eq('id', a.firmen.id).maybeSingle(),
       supabase
         .from('angebot_positionen')
         .select('kurztext, menge, einheit, einzelpreis_cents')
@@ -240,7 +240,7 @@ export default function Angebote({ projektId, istEigentuemer }: { projektId: str
       positionen: (posData ?? []) as DruckPosition[],
       summeNettoCents: a.summe_netto_cents,
     })
-    dokumentInFensterSchreiben(fenster, `Angebot ${a.firmen.name} – ${projektFuerDruck.name}`, html)
+    dokumentInFensterSchreiben(fenster, `Angebot ${a.firmen.name} – ${projektFuerDruck.name}`, html, (firmaData as DruckFirma).akzentfarbe)
   }
 
   const gewerkeMitOffenenLv = useMemo(() => {

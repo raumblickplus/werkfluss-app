@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/AuthContext'
 import AppShell from '../components/AppShell'
 import { karteStil, pillStil, projektStatusLabel, projektStatusVariante, eingabeStil, knopfStil, knopfSekundaerStil } from './stil'
+import { druckfensterOeffnen, dokumentInFensterSchreiben, mahnungDruckHtml, type DruckFirma } from '../lib/druckExport'
 
 type Tab = 'uebersicht' | 'buchhaltung' | 'steuern'
 const tabs: { key: Tab; label: string }[] = [
@@ -12,7 +13,7 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'steuern', label: 'Steuern' },
 ]
 
-type ProjektZeile = { id: string; name: string; status: string; kunde_rechnungsadresse: string | null }
+type ProjektZeile = { id: string; name: string; status: string; kunde_name: string | null; kunde_rechnungsadresse: string | null }
 type Angebot = {
   id: string
   projekt_id: string
@@ -136,7 +137,7 @@ export default function Finanzen() {
   async function laden() {
     setLadeStatus('laedt')
     const [{ data: pData }, { data: anData }, { data: auData }, { data: rData }] = await Promise.all([
-      supabase.from('projekte').select('id, name, status, kunde_rechnungsadresse'),
+      supabase.from('projekte').select('id, name, status, kunde_name, kunde_rechnungsadresse'),
       supabase.from('angebote').select('id, projekt_id, gewerk, summe_netto_cents, mwst_satz, status, gueltig_bis'),
       supabase.from('auftraege').select('id, projekt_id, summe_netto_cents, status'),
       supabase
@@ -165,11 +166,41 @@ export default function Finanzen() {
 
   const projektName = (id: string) => projekte.find((p) => p.id === id)?.name ?? 'Unbekanntes Projekt'
   const projektAdresse = (id: string) => projekte.find((p) => p.id === id)?.kunde_rechnungsadresse ?? null
+  const projektKundeName = (id: string) => projekte.find((p) => p.id === id)?.kunde_name ?? projektName(id)
   const istUeberfaellig = (r: Rechnung) => r.status === 'ueberfaellig' || (r.status === 'offen' && !!r.faellig_am && r.faellig_am < heuteIso)
 
   const [mahnungOffenFuer, setMahnungOffenFuer] = useState<string | null>(null)
   const [mahnungKopiert, setMahnungKopiert] = useState(false)
   const [mahnstufeSpeichert, setMahnstufeSpeichert] = useState(false)
+
+  // Für den PDF-Export der Mahnung: eigene Firma inkl. Logo/Akzentfarbe,
+  // einmalig geladen statt pro Klick (analog Rechnungen.tsx/Angebote.tsx).
+  const [druckFirma, setDruckFirma] = useState<DruckFirma | null>(null)
+  useEffect(() => {
+    if (!aktivFirma) return
+    supabase
+      .from('firmen')
+      .select('name, rechtsform, adresse, ust_id, telefon, email, iban, logo_url, akzentfarbe')
+      .eq('id', aktivFirma.id)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setDruckFirma(data as DruckFirma) })
+  }, [aktivFirma?.id])
+
+  function mahnungDrucken(r: Rechnung, mahntext: string, stufe: number) {
+    if (!druckFirma) return
+    const fenster = druckfensterOeffnen()
+    if (!fenster) return
+    const html = mahnungDruckHtml({
+      stufeTitel: mahnstufeLabel[stufe] ?? 'Mahnung',
+      brieftext: mahntext,
+      rechnungsnummer: r.rechnungsnummer,
+      betragBruttoCents: brutto(r.summe_netto_cents, r.mwst_satz),
+      firma: druckFirma,
+      kundeName: projektKundeName(r.projekt_id),
+      kundeRechnungsadresse: projektAdresse(r.projekt_id),
+    })
+    dokumentInFensterSchreiben(fenster, `${mahnstufeLabel[stufe] ?? 'Mahnung'} – ${r.rechnungsnummer}`, html, druckFirma.akzentfarbe)
+  }
 
   async function mahnstufeSetzen(rechnungId: string, neueStufe: number) {
     setMahnstufeSpeichert(true)
@@ -372,6 +403,15 @@ export default function Finanzen() {
                                   style={{ fontSize: 11.5, fontWeight: 700, padding: '6px 12px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--glass-border)', background: 'transparent' }}
                                 >
                                   {mahnungKopiert ? 'Kopiert ✓' : 'Text kopieren'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => mahnungDrucken(r, mahntext, naechsteStufe)}
+                                  disabled={!druckFirma}
+                                  title="Als PDF drucken/speichern"
+                                  style={{ fontSize: 11.5, fontWeight: 700, padding: '6px 12px', borderRadius: 999, cursor: 'pointer', border: '1px solid var(--glass-border)', background: 'transparent' }}
+                                >
+                                  PDF
                                 </button>
                                 <button
                                   type="button"
