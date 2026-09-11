@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabaseClient'
-import { eingabeStil, knopfStil, karteStil } from '../stil'
+import { eingabeStil, knopfStil, knopfSekundaerStil, karteStil } from '../stil'
 
 type Firma = { id: string; name: string }
-type AuftragOption = { id: string; firmen: Firma | null }
+type AuftragOption = { id: string; angebot_id: string | null; firmen: Firma | null }
 
 type Rechnung = {
   id: string
@@ -17,6 +17,8 @@ type Rechnung = {
   erstellt_am: string
   auftraege: AuftragOption | null
 }
+
+type Position = { id: string; kurztext: string; menge: number; einheit: string | null; einzelpreis_cents: number }
 
 const typLabel: Record<Rechnung['typ'], string> = {
   abschlag: 'Abschlagsrechnung',
@@ -54,6 +56,17 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
   const [mwstSatz, setMwstSatz] = useState('19')
   const [faelligAm, setFaelligAm] = useState('')
 
+  // Leistungsstand je Position des ausgewählten Auftrags (Konzept 8.2):
+  // Grundlage für einen nachvollziehbaren Abschlagsrechnungs-Vorschlag statt
+  // einer frei eingetippten Zahl.
+  const [positionen, setPositionen] = useState<Position[]>([])
+  const [leistungsstandAktuell, setLeistungsstandAktuell] = useState<Record<string, number>>({})
+  const [leistungsstandEingabe, setLeistungsstandEingabe] = useState<Record<string, string>>({})
+  const [bereitsAbgerechnetCents, setBereitsAbgerechnetCents] = useState(0)
+  const [leistungsstandLaedt, setLeistungsstandLaedt] = useState(false)
+  const [speichertLeistungsstand, setSpeichertLeistungsstand] = useState(false)
+  const [zeigeLeistungsstand, setZeigeLeistungsstand] = useState(false)
+
   async function laden() {
     setLadeStatus('laedt')
     const [{ data: rechnungenData, error: rechnungenFehler }, { data: auftraegeData }] = await Promise.all([
@@ -62,7 +75,7 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
         .select('id, auftrag_id, rechnungsnummer, typ, summe_netto_cents, mwst_satz, status, faellig_am, erstellt_am, auftraege(id, firmen(id, name))')
         .eq('projekt_id', projektId)
         .order('erstellt_am', { ascending: false }),
-      supabase.from('auftraege').select('id, firmen(id, name)').eq('projekt_id', projektId),
+      supabase.from('auftraege').select('id, angebot_id, firmen(id, name)').eq('projekt_id', projektId),
     ])
     if (rechnungenFehler) { setLadeStatus('fehler'); return }
     const liste = (rechnungenData ?? []) as unknown as Rechnung[]
@@ -77,6 +90,70 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
   }
 
   useEffect(() => { laden() }, [projektId])
+
+  async function auftragAusgewaehlt(neueAuftragId: string) {
+    setAuftragId(neueAuftragId)
+    setZeigeLeistungsstand(false)
+    setPositionen([])
+    setLeistungsstandAktuell({})
+    setLeistungsstandEingabe({})
+    setBereitsAbgerechnetCents(0)
+    if (!neueAuftragId) return
+
+    const auftrag = auftraege.find((a) => a.id === neueAuftragId)
+    if (!auftrag?.angebot_id) return
+
+    setLeistungsstandLaedt(true)
+    const [{ data: posData }, { data: reData }] = await Promise.all([
+      supabase.from('angebot_positionen').select('id, kurztext, menge, einheit, einzelpreis_cents').eq('angebot_id', auftrag.angebot_id).order('erstellt_am', { ascending: true }),
+      supabase.from('rechnungen_ausgang').select('summe_netto_cents').eq('auftrag_id', neueAuftragId).eq('typ', 'abschlag').neq('status', 'storniert'),
+    ])
+    const posListe = (posData ?? []) as Position[]
+    setPositionen(posListe)
+    setBereitsAbgerechnetCents((reData ?? []).reduce((sum, r) => sum + r.summe_netto_cents, 0))
+
+    if (posListe.length > 0) {
+      const { data: lsData } = await supabase
+        .from('leistungsstand_eintraege')
+        .select('angebot_position_id, erbrachte_menge, erstellt_am')
+        .in('angebot_position_id', posListe.map((p) => p.id))
+        .order('erstellt_am', { ascending: true })
+      const aktuell: Record<string, number> = {}
+      for (const eintrag of lsData ?? []) aktuell[eintrag.angebot_position_id] = eintrag.erbrachte_menge
+      setLeistungsstandAktuell(aktuell)
+      const eingabe: Record<string, string> = {}
+      for (const p of posListe) eingabe[p.id] = String(aktuell[p.id] ?? 0)
+      setLeistungsstandEingabe(eingabe)
+    }
+    setLeistungsstandLaedt(false)
+  }
+
+  async function leistungsstandSpeichern() {
+    setSpeichertLeistungsstand(true)
+    const zeilen = positionen
+      .map((p) => ({ p, menge: parseFloat((leistungsstandEingabe[p.id] ?? '').replace(',', '.')) }))
+      .filter(({ menge, p }) => Number.isFinite(menge) && menge !== (leistungsstandAktuell[p.id] ?? 0))
+      .map(({ p, menge }) => ({ projekt_id: projektId, angebot_position_id: p.id, erbrachte_menge: menge }))
+
+    if (zeilen.length > 0) {
+      await supabase.from('leistungsstand_eintraege').insert(zeilen)
+      const neu = { ...leistungsstandAktuell }
+      for (const z of zeilen) neu[z.angebot_position_id] = z.erbrachte_menge
+      setLeistungsstandAktuell(neu)
+    }
+    setSpeichertLeistungsstand(false)
+  }
+
+  const kumulierterWertCents = positionen.reduce((sum, p) => {
+    const menge = parseFloat((leistungsstandEingabe[p.id] ?? '').replace(',', '.'))
+    return sum + Math.round((Number.isFinite(menge) ? menge : 0) * p.einzelpreis_cents)
+  }, 0)
+  const vorschlagCents = Math.max(0, kumulierterWertCents - bereitsAbgerechnetCents)
+
+  function vorschlagUebernehmen() {
+    setSummeEuro((vorschlagCents / 100).toFixed(2).replace('.', ','))
+    setTyp('abschlag')
+  }
 
   async function anlegen(e: FormEvent) {
     e.preventDefault()
@@ -93,7 +170,8 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
       faellig_am: faelligAm || null,
     })
     if (!error) {
-      setRechnungsnummer(''); setSummeEuro(''); setFaelligAm(''); setAuftragId('')
+      setRechnungsnummer(''); setSummeEuro(''); setFaelligAm('')
+      auftragAusgewaehlt('')
       setZeigeFormular(false)
       laden()
     }
@@ -135,12 +213,72 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
           {auftraege.length > 0 && (
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)' }}>
               Zugehöriger Auftrag (optional)
-              <select style={eingabeStil} value={auftragId} onChange={(e) => setAuftragId(e.target.value)}>
+              <select style={eingabeStil} value={auftragId} onChange={(e) => auftragAusgewaehlt(e.target.value)}>
                 <option value="">– keiner –</option>
                 {auftraege.map((a) => <option key={a.id} value={a.id}>{a.firmen?.name ?? 'Unbekannte Firma'}</option>)}
               </select>
             </label>
           )}
+
+          {auftragId && (
+            <div style={{ borderRadius: 12, border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,.35)', padding: 12 }}>
+              {leistungsstandLaedt ? (
+                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-faint)' }}>Lädt Leistungsverzeichnis …</p>
+              ) : positionen.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-faint)' }}>
+                  Für diesen Auftrag liegen keine Positionen aus einem Angebot vor – kein Leistungsstand berechenbar.
+                </p>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setZeigeLeistungsstand((v) => !v)}
+                    style={{ all: 'unset', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: 'var(--olive)', marginBottom: zeigeLeistungsstand ? 10 : 0, display: 'block' }}
+                  >
+                    {zeigeLeistungsstand ? '▲ Leistungsstand ausblenden' : `▼ Leistungsstand erfassen (${positionen.length} Positionen)`}
+                  </button>
+
+                  {zeigeLeistungsstand && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {positionen.map((p) => (
+                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5 }}>
+                          <span style={{ flex: 1, minWidth: 160 }}>{p.kurztext}</span>
+                          <input
+                            style={{ ...eingabeStil, width: 90, padding: '6px 8px' }}
+                            value={leistungsstandEingabe[p.id] ?? '0'}
+                            onChange={(e) => setLeistungsstandEingabe((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                          />
+                          <span style={{ color: 'var(--ink-faint)', minWidth: 90 }}>von {p.menge} {p.einheit ?? ''}</span>
+                          <span style={{ color: 'var(--ink-faint)', minWidth: 90, textAlign: 'right' }}>
+                            à {centsZuEuroText(p.einzelpreis_cents)}
+                          </span>
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={leistungsstandSpeichern}
+                        disabled={speichertLeistungsstand}
+                        style={{ ...knopfSekundaerStil, alignSelf: 'flex-start', fontSize: 11.5, padding: '6px 12px' }}
+                      >
+                        {speichertLeistungsstand ? 'Speichert …' : 'Leistungsstand speichern'}
+                      </button>
+
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 6, paddingTop: 10, borderTop: '1px solid var(--glass-border)', fontSize: 12.5 }}>
+                        <span>Kumulierter Leistungswert: <b>{centsZuEuroText(kumulierterWertCents)}</b></span>
+                        <span>Bereits abgerechnet: <b>{centsZuEuroText(bereitsAbgerechnetCents)}</b></span>
+                        <span>Vorschlag für diese Abschlagsrechnung: <b style={{ color: 'var(--olive-light)' }}>{centsZuEuroText(vorschlagCents)}</b></span>
+                      </div>
+                      <button type="button" onClick={vorschlagUebernehmen} style={{ ...knopfSekundaerStil, alignSelf: 'flex-start', fontSize: 11.5, padding: '6px 12px' }}>
+                        Vorschlag in Summe übernehmen
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 12 }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--ink-dim)', flex: 1 }}>
               Summe netto (€)
@@ -200,6 +338,14 @@ export default function Rechnungen({ projektId }: { projektId: string }) {
           )
         })}
       </div>
+
+      <p className="footnote">
+        Der Leistungsstand-Vorschlag basiert auf der von der ausführenden Firma (oder dem Eigentümer) je
+        LV-Position gemeldeten erbrachten Menge – multipliziert mit dem Einzelpreis aus dem Angebot, abzüglich
+        bereits gestellter Abschlagsrechnungen. Eine gesonderte Prüfung/Freigabe des gemeldeten Aufmaßes durch
+        den Auftraggeber vor Rechnungsstellung ist bewusst nicht Teil dieser Umsetzung – die Summe bleibt vor
+        dem Speichern frei editierbar.
+      </p>
     </div>
   )
 }
