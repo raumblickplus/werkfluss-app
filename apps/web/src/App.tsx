@@ -16,6 +16,7 @@ import Einstellungen from './pages/Einstellungen'
 import Finanzen from './pages/Finanzen'
 import Maengel from './pages/Maengel'
 import Tagesbericht from './pages/Tagesbericht'
+import MeinTag from './pages/MeinTag'
 import Netzwerk from './pages/Netzwerk'
 import Projektmappe from './pages/Projektmappe'
 import Kundenansicht from './pages/Kundenansicht'
@@ -69,6 +70,7 @@ export default function App() {
       <Route path="/finanzen" element={<Finanzen />} />
       <Route path="/maengel" element={<Maengel />} />
       <Route path="/tagesbericht" element={<Tagesbericht />} />
+      <Route path="/mein-tag" element={<MeinTag />} />
       <Route path="/netzwerk" element={<Netzwerk />} />
       <Route path="/projektmappe" element={<Projektmappe />} />
       <Route path="/modul/:modulId" element={<ModulPlatzhalter />} />

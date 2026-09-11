@@ -35,6 +35,11 @@ const ic = {
       <path d="M7 3.5h10a1 1 0 0 1 1 1V21l-3.5-2-2.5 2-2.5-2L6 21V4.5a1 1 0 0 1 1-1Z" /><path d="M9 8.5h6M9 12h6" />
     </svg>
   ),
+  meintag: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 21s7-6.4 7-12a7 7 0 1 0-14 0c0 5.6 7 12 7 12Z" /><circle cx="12" cy="9" r="2.6" />
+    </svg>
+  ),
   maengel: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4M12 17h.01" />
@@ -100,6 +105,7 @@ const navGroups: NavGroup[] = [
     akzent: { bg: '#7C8566', text: '#F7F3E7' },
     items: [
       { id: 'projekte', label: 'Projekte', icon: ic.projekte },
+      { id: 'meintag', label: 'Mein Tag', icon: ic.meintag },
       { id: 'zeitplan', label: 'Zeitplan', icon: ic.zeitplan },
       { id: 'tagesbericht', label: 'Tagesbericht', icon: ic.tagesbericht },
       { id: 'maengel', label: 'Mängel & Abnahme', icon: ic.maengel },
@@ -155,6 +161,7 @@ function pfadFuer(id: string) {
   if (id === 'dashboard') return '/dashboard'
   if (id === 'team') return '/team'
   if (id === 'zeitplan') return '/zeitplan'
+  if (id === 'meintag') return '/mein-tag'
   if (id === 'finanzen') return '/finanzen'
   if (id === 'buchhaltung') return '/finanzen?tab=buchhaltung'
   if (id === 'maengel') return '/maengel'
@@ -193,6 +200,7 @@ export default function AppShell({
     if (id === 'dashboard') return location.pathname === '/dashboard'
     if (id === 'team') return location.pathname === '/team'
     if (id === 'zeitplan') return location.pathname === '/zeitplan'
+    if (id === 'meintag') return location.pathname === '/mein-tag'
     if (id === 'finanzen') return location.pathname === '/finanzen' && location.search !== '?tab=buchhaltung'
     if (id === 'buchhaltung') return location.pathname === '/finanzen' && location.search === '?tab=buchhaltung'
     if (id === 'maengel') return location.pathname === '/maengel'
